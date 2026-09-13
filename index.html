@@ -2455,10 +2455,11 @@ html.mobile-deck body #experience .try-content.can-scroll>.product-actions{box-s
  html.mobile-deck:not(.mobile-landscape) body #experience .try-content[data-view="held"] .reason-amount{padding:8px 10px!important}
 }
 
-/* 02 / 보호 — keep the final phone frame vertically centered on mobile. */
+/* 02 / 보호 — anchor the final phone frame to the same mobile top edge as the other frames. */
 @media(max-width:760px){
- html.mobile-deck body #how-it-works .replay-stage[data-frame="3"] .replay-device{
-   transform:translate(-50%,-50%)!important;
+ html.deck-enabled body #how-it-works .replay-stage[data-frame="3"] .replay-device{
+   top:0!important;
+   transform:translateX(-50%)!important;
  }
 }
 

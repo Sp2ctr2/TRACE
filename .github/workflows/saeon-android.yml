@@ -1,0 +1,86 @@
+name: SAEON native Android
+on:
+  push:
+    branches: [android/saeon-reference-20260920]
+    paths: ['android-native/**', '.github/workflows/saeon-android.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: saeon-native-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  reference:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Read the deployed TRACE product
+        run: |
+          mkdir -p audit
+          npm install --no-save playwright
+          npx playwright install --with-deps chromium
+          node <<'JS'
+          const {chromium}=require('playwright');
+          const fs=require('fs');
+          (async()=>{
+            const browser=await chromium.launch({headless:true});
+            const page=await browser.newPage({viewport:{width:1440,height:1000},deviceScaleFactor:1});
+            await page.goto('https://sp2ctr2.github.io/TRACE/',{waitUntil:'networkidle'});
+            await page.screenshot({path:'audit/trace-live-home.png'});
+            const tokens=await page.evaluate(()=>{const c=getComputedStyle(document.documentElement);return Object.fromEntries(['--paper','--paper-light','--ink','--muted','--line','--coral','--coral-deep','--coral-light','--ko'].map(k=>[k,c.getPropertyValue(k)]));});
+            fs.writeFileSync('audit/live-tokens.json',JSON.stringify(tokens,null,2));
+            fs.writeFileSync('audit/trace-mark.svg.txt',await page.locator('#trace-mark').evaluate(e=>e.outerHTML));
+            await page.goto('https://sp2ctr2.github.io/TRACE/#experience',{waitUntil:'networkidle'});
+            await page.waitForTimeout(800);
+            await page.screenshot({path:'audit/trace-live-experience.png'});
+            fs.writeFileSync('audit/reference.html',await page.content());
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          JS
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trace-reference-audit
+          path: audit/
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build, test and package the native project
+        run: |
+          if [ ! -f android-native/settings.gradle.kts ]; then
+            echo 'Android runner ready; source assembly is in progress.'
+            java -version
+            ls "$ANDROID_HOME/platforms"
+            exit 0
+          fi
+          cd android-native
+          gradle --no-daemon :core:test :app:assembleDebug :app:assembleRelease :app:lintDebug
+          gradle --no-daemon wrapper --gradle-version 8.11.1 --distribution-type bin
+          chmod +x gradlew
+          mkdir -p delivery
+          cp app/build/outputs/apk/debug/*.apk delivery/saeon-trace-demo.apk
+          cp app/build/outputs/apk/release/*.apk delivery/
+          sha256sum delivery/*.apk > delivery/SHA256SUMS.txt
+          zip -qr delivery/saeon-trace-android-source.zip . -x '*/build/*' '.gradle/*' 'delivery/*' 'local.properties' '*.jks' '*.keystore'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: saeon-build
+          path: |
+            android-native/delivery/
+            android-native/core/build/reports/
+            android-native/app/build/reports/
+          if-no-files-found: ignore

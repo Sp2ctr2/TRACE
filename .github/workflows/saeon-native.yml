@@ -1,0 +1,75 @@
+name: Saeon Native Android
+on:
+  push:
+    branches: [feat/saeon-native-android]
+    paths: ['android/**', '.github/workflows/saeon-native.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: saeon-native-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Build and unit tests
+        if: hashFiles('android/settings.gradle.kts') != ''
+        working-directory: android
+        run: |
+          gradle --no-daemon :domain:test :app:assembleDemoDebug :app:assembleDemoDebugAndroidTest :app:lintDemoDebug
+      - name: Enable KVM
+        if: hashFiles('android/settings.gradle.kts') != ''
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Android 35 instrumentation — regression twice
+        if: hashFiles('android/settings.gradle.kts') != ''
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: |
+            cd android
+            adb shell wm size 1080x2400
+            adb shell wm density 440
+            gradle --no-daemon :app:connectedDemoDebugAndroidTest
+            mkdir -p evidence/pass-1 evidence/pass-2
+            cp -r app/build/reports/androidTests evidence/pass-1/
+            adb pull /sdcard/Android/data/dev.sp2ctr2.saeon.demo/files/screenshots evidence/pass-1/ || true
+            gradle --no-daemon :app:connectedDemoDebugAndroidTest --rerun-tasks
+            cp -r app/build/reports/androidTests evidence/pass-2/
+            adb pull /sdcard/Android/data/dev.sp2ctr2.saeon.demo/files/screenshots evidence/pass-2/ || true
+      - name: Package verified artifacts
+        if: always() && hashFiles('android/settings.gradle.kts') != ''
+        run: |
+          mkdir -p delivery
+          cp android/app/build/outputs/apk/demo/debug/*.apk delivery/ 2>/dev/null || true
+          cp -r android/evidence delivery/ 2>/dev/null || true
+          cp -r android/domain/build/test-results delivery/domain-tests 2>/dev/null || true
+          cp -r android/app/build/reports delivery/app-reports 2>/dev/null || true
+          cd delivery
+          sha256sum *.apk > SHA256SUMS.txt 2>/dev/null || true
+          cd ..
+          zip -qr delivery/SAEON_ANDROID_SOURCE.zip android -x '*/build/*' '*/.gradle/*' '*/evidence/*' '*/local.properties'
+      - uses: actions/upload-artifact@v4
+        if: always() && hashFiles('android/settings.gradle.kts') != ''
+        with:
+          name: saeon-native-${{ github.run_number }}
+          path: delivery/
+          retention-days: 14

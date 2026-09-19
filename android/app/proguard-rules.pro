@@ -1,0 +1,2 @@
+-keepattributes Signature,InnerClasses,EnclosingMethod
+-keep class dev.sp2ctr2.saeon.domain.**$$serializer { *; }

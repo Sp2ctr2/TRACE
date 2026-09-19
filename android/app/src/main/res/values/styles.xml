@@ -1,0 +1,13 @@
+<resources>
+    <style name="Theme.Saeon" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:statusBarColor">#FBFAF7</item>
+        <item name="android:navigationBarColor">#FBFAF7</item>
+        <item name="android:windowBackground">#FBFAF7</item>
+        <item name="android:colorAccent">#D93B25</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+</resources>

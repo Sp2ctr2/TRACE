@@ -20,6 +20,15 @@ class BankRepository(
     private val _fatal = MutableStateFlow<String?>(null)
     val fatal: StateFlow<String?> = _fatal.asStateFlow()
     private var observer: Job? = null
+    private var publishedRevision = -1L
+    @Synchronized private fun publish(state: BankState, revision: Long) {
+        // Room invalidation and the write result can arrive on different dispatchers.
+        // Never let a delayed observer roll the visible ledger back to an older revision.
+        if (revision >= publishedRevision) {
+            publishedRevision = revision
+            _state.value = state
+        }
+    }
     private fun decode(row: SnapshotEntity): BankState {
         check(Digests.sha256(row.payload) == row.checksum) { "Ledger checksum mismatch" }
         return SnapshotCodec.decode(row.payload)
@@ -32,18 +41,22 @@ class BankRepository(
                     val initial = if (row == null) {
                         clock.reset(); Fixtures.initial(now = clock.now())
                     } else {
-                        val saved = decode(row); clock.restore(saved.simulatedNow, row.storedAtWall); BankEngine.recover(saved)
+                        val saved = decode(row)
+                        clock.restore(saved.simulatedNow, row.storedAtWall)
+                        BankEngine.recover(saved)
                     }
-                    persist(initial.copy(simulatedNow = clock.now()), (row?.revision ?: 0) + 1)
-                    initial
+                    val revision = (row?.revision ?: 0) + 1
+                    val restored = initial.copy(simulatedNow = clock.now())
+                    persist(restored, revision)
+                    restored to revision
                 }
-                _state.value = loaded
+                publish(loaded.first, loaded.second)
                 _fatal.value = null
                 if (observer == null) observer = scope.launch(Dispatchers.IO) {
                     database.snapshots().observe().collect { row ->
-                        if (row != null) try { _state.value = decode(row) } catch (_: Exception) {
-                            _fatal.value = storageMessage
-                        }
+                        if (row != null) try { publish(decode(row), row.revision) }
+                        catch (cancel: CancellationException) { throw cancel }
+                        catch (_: Exception) { _fatal.value = storageMessage }
                     }
                 }
             } catch (cancel: CancellationException) { throw cancel }
@@ -64,10 +77,10 @@ class BankRepository(
                 check(updated.balance >= 0 && updated.savings >= 0 && updated.loanBalance >= 0)
                 check(updated.receipts.map { it.intentId }.distinct().size == updated.receipts.size)
                 persist(updated, row.revision + 1)
-                updated
+                updated to row.revision + 1
             }
-            _state.value = result
-            result
+            publish(result.first, result.second)
+            result.first
         }
     }
     suspend fun setDraft(draft: TransferDraft) = change { state, _ -> state.copy(draft = draft) }
@@ -90,7 +103,13 @@ class BankRepository(
     suspend fun finish(id: String): BankState = change { state, now -> gateway.evaluateAndCommit(state, id, now) }
     suspend fun cancelAuthorization(id: String, message: String? = null) = change { state, _ -> BankEngine.cancelAuthorization(state, id, message) }
     suspend fun acknowledge(id: String) = change { state, now -> BankEngine.acknowledgeWarning(state, id, now) }
-    suspend fun resolveRoute(id: String) = change { state, now -> gateway.resolve(state, id, now) }
+    suspend fun resolveRoute(id: String) = change { state, now ->
+        val record = state.record(id)
+        // An explicitly requested refresh discards the old route before querying.
+        // Refreshing cannot create a new intent, authorization, receipt or debit.
+        val pending = if (record.stage == TransferStage.ROUTE) state.withRecord(record.copy(stage = TransferStage.VERIFY, route = null)) else state
+        gateway.resolve(pending, id, now)
+    }
     suspend fun useRoute(id: String) = change { state, now -> BankEngine.useOfficialRoute(state, id, now) }
     suspend fun cancel(id: String) = change { state, _ -> BankEngine.cancel(state, id) }
     suspend fun selectTransfer(id: String) = change { state, _ -> state.record(id); state.copy(currentTransferId = id) }
@@ -102,9 +121,6 @@ class BankRepository(
         state.copy(transferLimit = limit)
     }
     suspend fun recurring(value: Boolean) = change { state, _ -> state.copy(recurringEnabled = value) }
-    suspend fun favorite(id: String, value: Boolean) = change { state, _ ->
-        state.copy(recipients = state.recipients.map { if (it.id == id) it.copy(known = value) else it })
-    }
     suspend fun addRecipient(recipient: Recipient) = change { state, _ ->
         if (state.recipients.none { it.id == recipient.id }) state.copy(recipients = state.recipients + recipient) else state
     }
@@ -112,11 +128,12 @@ class BankRepository(
         mutex.withLock {
             clock.reset()
             val fresh = Fixtures.initial(scenario, clock.now())
-            database.withTransaction {
-                val revision = (database.snapshots().read()?.revision ?: 0) + 1
-                persist(fresh, revision)
+            val revision = database.withTransaction {
+                val next = (database.snapshots().read()?.revision ?: 0) + 1
+                persist(fresh, next)
+                next
             }
-            _state.value = fresh
+            publish(fresh, revision)
             _fatal.value = null
         }
     }

@@ -106,22 +106,22 @@ abstract class UiHarness {
         File(output, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
         val nodes = compose.onAllNodes(SemanticsMatcher("all nodes") { true }, useUnmergedTree = true).fetchSemanticsNodes()
-        File(output, "$name.semantics.txt").writeText(nodes.joinToString("\n\n") { "${it.id} ${it.boundsInRoot}\n${it.config}" })
+        File(output, "$name.semantics.txt").writeText(nodes.joinToString("\n\n") { "${it.id} clipped=${it.boundsInRoot} layout=${it.size}\n${it.config}" })
         if (audit) auditLayout(nodes, name)
     }
     private fun auditLayout(nodes: List<SemanticsNode>, name: String) {
-        val density = context.resources.displayMetrics.density
-        val minTarget = 48f * density - 1.5f
-        val width = device.displayWidth.toFloat()
-        val height = device.displayHeight.toFloat()
+        val minTarget = 48f * context.resources.displayMetrics.density - 1.5f
         val issues = mutableListOf<String>()
         nodes.forEach { node ->
-            val bounds = node.boundsInRoot
-            val isVisible = bounds.width > 0 && bounds.height > 0 && bounds.left >= 0 && bounds.top >= 0 && bounds.right <= width && bounds.bottom <= height
-            if (isVisible && node.config.contains(SemanticsActions.OnClick)) {
-                if (bounds.width < minTarget || bounds.height < minTarget) issues += "Touch target ${node.id}: $bounds\n${node.config}"
+            val visible = node.boundsInRoot.width > 0 && node.boundsInRoot.height > 0
+            // A clipped scroll viewport is not the logical size of a touch target.
+            if (visible && node.config.contains(SemanticsActions.OnClick)) {
+                val actual = node.touchBoundsInRoot
+                val logical = node.size
+                if ((logical.width < minTarget && actual.width < minTarget) || (logical.height < minTarget && actual.height < minTarget))
+                    issues += "Touch target ${node.id}: layout=$logical touch=$actual\n${node.config}"
             }
-            if (isVisible) {
+            if (visible) {
                 val result = mutableListOf<TextLayoutResult>()
                 node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(result)
                 result.filter { it.hasVisualOverflow }.forEach { issues += "Text overflow ${node.id}: ${it.layoutInput.text}" }

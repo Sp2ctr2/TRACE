@@ -16,6 +16,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.saeon.trace.core.*
 import app.saeon.trace.data.BankPreferences
 import app.saeon.trace.ui.*
@@ -23,10 +24,11 @@ import app.saeon.trace.ui.design.*
 
 @Composable fun RecipientScreen(state: BankState, model: BankViewModel, open: (String) -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
+    val preferences by model.preferences.collectAsStateWithLifecycle()
     val scenarioRecipient = Fixtures.recipient(state.scenario)
     val recent = (listOf(scenarioRecipient) + state.receipts.filter { it.recipient.kind == RecipientKind.PERSON }
         .mapNotNull { receipt -> state.recipients.find { it.id == receipt.recipient.id } }).distinctBy { it.id }.take(3)
-    val favorites = state.recipients.filter { it.known && recent.none { r -> r.id == it.id } }
+    val favorites = state.recipients.filter { it.id in preferences.favoriteIds && recent.none { r -> r.id == it.id } }
     val matches = state.recipients.filter { query.isBlank() || it.name.contains(query) || it.account.contains(query) || it.bank.contains(query) }
     Page(title = "송금", tag = "transfer_recipient") {
         Space(12); Headline("누구에게 보낼까요?"); Space(24)
@@ -43,7 +45,9 @@ import app.saeon.trace.ui.design.*
             recent.forEach { recipient -> RecipientRow(recipient) { model.startRecipient(recipient) { open("amount") } } }
             if (favorites.isNotEmpty()) {
                 Space(24); Rule(); Space(16); SectionTitle("자주 보내는 사람")
-                favorites.forEach { recipient -> RecipientRow(recipient) { model.startRecipient(recipient) { open("amount") } } }
+                Column(Modifier.testTag("favorite_recipient_list")) {
+                    favorites.forEach { recipient -> RecipientRow(recipient) { model.startRecipient(recipient) { open("amount") } } }
+                }
             }
             val other = state.recipients.filter { candidate -> recent.none { it.id == candidate.id } && favorites.none { it.id == candidate.id } }
             if (other.isNotEmpty()) {
@@ -119,7 +123,7 @@ import app.saeon.trace.ui.design.*
     var purposeSheet by rememberSaveable { mutableStateOf(false) }
     var directInput by rememberSaveable { mutableStateOf(false) }
     var directDigits by rememberSaveable { mutableStateOf("") }
-    val interaction by model.interaction.collectAsState()
+    val interaction by model.interaction.collectAsStateWithLifecycle()
     val amount = digits.toLongOrNull() ?: 0L
     val purpose = Purpose.valueOf(purposeName)
     val localDraft = TransferDraft(draft.recipient, amount, purpose)
@@ -310,7 +314,7 @@ import app.saeon.trace.ui.design.*
             Space(12); Body("한 가지 신호가 아니라, 이 송금으로 이어진 흐름을 함께 봤어요.", subdued = true)
             Space(18)
             reasons.forEachIndexed { index, reason -> NumberedReason(index + 1, reason.label, reason.explanation); if (index < reasons.lastIndex) Rule() }
-            Space(20); PrimaryButton("확인") { reasonsOpen = false }
+            Space(20); PrimaryButton("확인", Modifier.testTag("hold_reasons_close")) { reasonsOpen = false }
         }
     }
 }
@@ -361,6 +365,7 @@ import app.saeon.trace.ui.design.*
     val route = record.route
     Page(title = "확인된 상환 경로", tag = "trace_official_route", back = back, footer = {
         PrimaryButton("새 송금 내역 확인", Modifier.testTag("official_route_use"), enabled = route != null && !interaction.busy) { model.useRoute(record.intent.id) }
+        QuietButton(if (interaction.routeLoading) "경로를 다시 확인하고 있어요." else "공식 경로 다시 확인", Modifier.fillMaxWidth().testTag("official_route_refresh"), enabled = !interaction.busy) { model.resolveRoute(record.intent.id) }
     }) {
         Space(12); TraceSignature(); Space(24); Headline("보내는 목적에 맞는\n받는 곳을 찾았어요.")
         Space(16); Body("아직 송금하지 않았습니다.")

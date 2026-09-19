@@ -112,20 +112,18 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Run native UI, safety, persistence and screenshot regression
-        uses: reactivecircus/android-emulator-runner@v2
+      - uses: actions/cache@v4
         with:
-          api-level: 35
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          ram-size: 4096M
-          heap-size: 512M
-          disk-size: 6000M
-          emulator-boot-timeout: 600
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          disable-animations: true
-          script: bash android-native/tools/run-device-suite.sh
+          path: /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
+          key: saeon-api35-google-apis-x86-64-v1
+      - name: Prepare and boot the Android 15 emulator
+        timeout-minutes: 15
+        run: bash android-native/tools/boot-emulator.sh
+      - name: Run native safety, UI, persistence and screenshot regression
+        run: bash android-native/tools/run-device-suite.sh
+      - name: Stop the emulator
+        if: always()
+        run: adb emu kill || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

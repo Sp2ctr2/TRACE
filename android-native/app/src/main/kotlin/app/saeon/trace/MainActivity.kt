@@ -37,7 +37,7 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(statusBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
-            navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT))
+            navigationBarStyle = SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.rgb(32, 33, 31)))
         if (Build.VERSION.SDK_INT >= 29) window.isNavigationBarContrastEnforced = false
         receiveSharedText(intent)
         setContent {
@@ -53,7 +53,6 @@ class MainActivity : FragmentActivity() {
     private fun receiveSharedText(incoming: Intent?) {
         if (incoming?.action != Intent.ACTION_SEND || incoming.type != "text/plain") return
         val text = incoming.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
-        // Strip the original immediately. Rotation or state saving cannot re-ingest it.
         incoming.removeExtra(Intent.EXTRA_TEXT)
         incoming.clipData = null
         intent = Intent(this, MainActivity::class.java)
@@ -89,33 +88,35 @@ class MainActivity : FragmentActivity() {
         }
         stopVoice()
         try {
-            speech = SpeechRecognizer.createOnDeviceSpeechRecognizer(this).also { recognizer ->
-                recognizer.setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) { voiceActive = true }
-                    override fun onBeginningOfSpeech() { voiceActive = true }
-                    override fun onRmsChanged(rmsdB: Float) = Unit
-                    override fun onBufferReceived(buffer: ByteArray?) = Unit
-                    override fun onEndOfSpeech() { voiceActive = false }
-                    override fun onError(error: Int) {
-                        stopVoice()
-                        safetyModel.showError("기기에서 음성을 받아 적지 못했어요. 다시 말하거나 직접 입력해 주세요. 분석이나 송금은 실행하지 않았습니다.")
-                    }
-                    override fun onResults(results: Bundle?) {
-                        val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-                        stopVoice()
-                        if (text.isNotBlank()) safetyModel.edit(text, RiskSource.USER_VOICE)
-                        else safetyModel.showError("입력된 말이 없어요. 다시 말하거나 직접 입력해 주세요.")
-                    }
-                    override fun onPartialResults(partialResults: Bundle?) = Unit
-                    override fun onEvent(eventType: Int, params: Bundle?) = Unit
-                })
-                voiceActive = true
-                recognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
-                    .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-                    .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false))
-            }
+            val recognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(this)
+            speech = recognizer
+            recognizer.setRecognitionListener(object : RecognitionListener {
+                override fun onReadyForSpeech(params: Bundle?) { if (speech === recognizer) voiceActive = true }
+                override fun onBeginningOfSpeech() { if (speech === recognizer) voiceActive = true }
+                override fun onRmsChanged(rmsdB: Float) = Unit
+                override fun onBufferReceived(buffer: ByteArray?) = Unit
+                override fun onEndOfSpeech() { if (speech === recognizer) voiceActive = false }
+                override fun onError(error: Int) {
+                    if (speech !== recognizer) return
+                    stopVoice()
+                    safetyModel.showError("기기에서 음성을 받아 적지 못했어요. 다시 말하거나 직접 입력해 주세요. 분석이나 송금은 실행하지 않았습니다.")
+                }
+                override fun onResults(results: Bundle?) {
+                    if (speech !== recognizer) return
+                    val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
+                    stopVoice()
+                    if (text.isNotBlank()) safetyModel.edit(text, RiskSource.USER_VOICE)
+                    else safetyModel.showError("입력된 말이 없어요. 다시 말하거나 직접 입력해 주세요.")
+                }
+                override fun onPartialResults(partialResults: Bundle?) = Unit
+                override fun onEvent(eventType: Int, params: Bundle?) = Unit
+            })
+            voiceActive = true
+            recognizer.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ko-KR")
+                .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false))
         } catch (_: Exception) {
             stopVoice()
             safetyModel.showError("기기 내 음성 입력을 시작하지 못했어요. 내용을 직접 입력해 주세요. 녹음을 저장하거나 전송하지 않았습니다.")

@@ -354,134 +354,282 @@ import app.saeon.trace.ui.design.*
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
-@Composable private fun HoldScreen(record: TransferRecord, easy: Boolean, model: BankViewModel,
-                                   open: (String) -> Unit, back: () -> Unit, home: () -> Unit) {
+@Composable private fun HoldScreen(
+    record: TransferRecord,
+    easy: Boolean,
+    model: BankViewModel,
+    open: (String) -> Unit,
+    back: () -> Unit,
+    home: () -> Unit
+) {
     var reasonsOpen by rememberSaveable { mutableStateOf(false) }
-    val reasons = listOf(RiskType.IMPERSONATION, RiskType.URGENCY, RiskType.NEW_RECIPIENT, RiskType.SUSPICIOUS_LINK, RiskType.FINANCIAL_INSTRUCTION)
-        .filter { it in record.reasons }
+    val reasons = listOf(
+        RiskType.IMPERSONATION,
+        RiskType.URGENCY,
+        RiskType.NEW_RECIPIENT,
+        RiskType.SUSPICIOUS_LINK,
+        RiskType.FINANCIAL_INSTRUCTION
+    ).filter { it in record.reasons }
     Page(title = "송금 보류", tag = "trace_hold", back = back, footer = {
-        PrimaryButton(if (easy) "공식 경로로 확인" else "안전하게 확인하기", Modifier.testTag("hold_safe_action")) { open("safety_guide") }
+        PrimaryButton(
+            if (easy) "공식 경로로 확인" else "안전하게 확인하기",
+            Modifier.testTag("hold_safe_action"),
+            accent = true
+        ) { open("safety_guide") }
         SecondaryButton("송금 취소", Modifier.testTag("hold_cancel")) { model.cancelTransfer(record.intent.id, home) }
     }) {
-        Space(8); TraceSignature(); Space(24)
+        Space(6); TraceSignature(); Space(18); AccentRule(34); Space(16)
         if (easy) {
-            Headline("송금을 잠시\n멈췄습니다.", Modifier.testTag("easy_mode")); Space(24)
-            Text("아직 돈은 나가지 않았습니다.", style = MaterialTheme.typography.titleMedium)
-            Space(24); Body("상대가 기관을 사칭했을 가능성이 있습니다.")
-            Space(28); Money(record.intent.amount, hero = false); Space(8); Body("${record.intent.recipient.name}님에게 보내려던 돈")
-            Space(24); Body("상대가 준 번호나 링크가 아닌, 은행 앱의 공식 경로로 확인하세요.", subdued = true)
-        } else {
-            Headline("잠깐,\n보내지 않아도 괜찮아요."); Space(14)
-            Body("아직 돈은 나가지 않았습니다.")
-            Space(8); Body("기관 사칭과 급한 송금 요청이 이 거래와 연결돼, 잠시 멈췄어요.", subdued = true)
-            Space(24)
-            SurfaceBox {
-                Caption(if (record.intent.recipient.known) "저장된 수취인" else "처음 보내는 계좌"); Space(8); Money(record.intent.amount, hero = false)
-                Space(6); Text("${record.intent.recipient.name}님에게", style = MaterialTheme.typography.titleSmall)
-                Space(6); Caption("${record.intent.recipient.bank} · ${record.intent.recipient.account}")
-            }
+            MicroLabel("송금 보류", coral = true); Space(7)
+            Headline("송금을 잠시\n멈췄습니다.", Modifier.testTag("easy_mode"))
             Space(18)
-            reasons.take(3).forEachIndexed { index, reason -> NumberedReason(index + 1, reason.label, accent = index == 0) }
+            Text("아직 돈은 나가지 않았습니다.", style = MaterialTheme.typography.titleMedium)
+            Space(18)
+            SurfaceBox(tint = TraceColors.CoralWash) {
+                Money(record.intent.amount, hero = false)
+                Space(7); Body("${record.intent.recipient.name}님에게 보내려던 돈")
+            }
+            Space(20)
+            Body("상대가 기관을 사칭했을 가능성이 있어요. 상대가 준 번호나 링크가 아닌, 은행 앱의 공식 경로로 확인하세요.", subdued = true)
+        } else {
+            MicroLabel("송금 보류", coral = true); Space(7)
+            Headline("잠깐,\n확인하고 보내볼까요?")
+            Space(14)
+            Text("아직 돈은 나가지 않았습니다.", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+            Space(7)
+            Body("방금 전의 요청이 이 송금과 이어져 있어 잠시 멈췄어요.", subdued = true)
+            Space(22)
+            SurfaceBox(tint = TraceColors.CoralWash) {
+                MicroLabel(if (record.intent.recipient.known) "저장된 수취인" else "처음 보내는 계좌", coral = true)
+                Space(9); Money(record.intent.amount, hero = false)
+                Space(7); Text("${record.intent.recipient.name}님에게", style = MaterialTheme.typography.titleSmall)
+                Space(3); Caption("${record.intent.recipient.bank} · ${record.intent.recipient.account}")
+            }
+            Space(20)
+            SectionTitle("이 송금을 멈춘 이유")
+            reasons.take(3).forEachIndexed { index, reason ->
+                NumberedReason(index + 1, reason.label, accent = index == 0)
+                if (index < reasons.take(3).lastIndex) Rule()
+            }
+            Space(8)
+            MenuRow("멈춘 이유 자세히", icon = BankIcons.Link, tag = "hold_reasons_open") { reasonsOpen = true }
             Rule()
-            MenuRow("멈춘 이유", icon = BankIcons.Link, tag = "hold_reasons_open") { reasonsOpen = true }
-            MenuRow("위험 신호가 이어진 흐름", icon = BankIcons.History, tag = "hold_timeline_open") { open("timeline") }
-            Space(12); Caption("이 화면을 닫아도 자동으로 송금되지 않습니다.")
+            MenuRow("위험 신호의 시간 흐름", icon = BankIcons.History, tag = "hold_timeline_open") { open("timeline") }
+            Space(10); Caption("이 화면을 닫아도 자동으로 송금되지 않습니다.")
         }
     }
-    if (reasonsOpen) ModalBottomSheet(onDismissRequest = { reasonsOpen = false },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = TraceColors.Surface) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).testTag("trace_hold_reason").padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-            Text("멈춘 이유", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-            Space(12); Body("한 가지 신호가 아니라, 이 송금으로 이어진 흐름을 함께 봤어요.", subdued = true)
-            Space(18)
-            reasons.forEachIndexed { index, reason -> NumberedReason(index + 1, reason.label, reason.explanation); if (index < reasons.lastIndex) Rule() }
-            Space(20); PrimaryButton("확인", Modifier.testTag("hold_reasons_close")) { reasonsOpen = false }
+    if (reasonsOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { reasonsOpen = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = TraceColors.Surface
+        ) {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).testTag("trace_hold_reason")
+                    .padding(horizontal = 20.dp).padding(bottom = 24.dp)
+            ) {
+                TraceSignature(); Space(16)
+                Text("멈춘 이유", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
+                Space(9); Body("한 가지 신호가 아니라, 이 송금으로 이어진 흐름을 함께 봤어요.", subdued = true)
+                Space(18)
+                reasons.forEachIndexed { index, reason ->
+                    NumberedReason(index + 1, reason.label, reason.explanation, accent = index == 0)
+                    if (index < reasons.lastIndex) Rule()
+                }
+                Space(20)
+                PrimaryButton("확인", Modifier.testTag("hold_reasons_close"), accent = true) { reasonsOpen = false }
+            }
         }
     }
 }
 
-@Composable private fun WarnScreen(record: TransferRecord, interaction: InteractionState, model: BankViewModel, back: () -> Unit, home: () -> Unit) {
+@Composable private fun WarnScreen(
+    record: TransferRecord,
+    interaction: InteractionState,
+    model: BankViewModel,
+    back: () -> Unit,
+    home: () -> Unit
+) {
     var checked by rememberSaveable(record.intent.id) { mutableStateOf(false) }
     Page(title = "보내기 전 확인", tag = "trace_warn", back = back, footer = {
-        PrimaryButton("확인한 내용으로 다시 보기", Modifier.testTag("warn_acknowledge"), enabled = checked && !interaction.busy) { model.acknowledge(record.intent.id) }
+        PrimaryButton(
+            "확인한 내용으로 다시 보기",
+            Modifier.testTag("warn_acknowledge"),
+            enabled = checked && !interaction.busy
+        ) { model.acknowledge(record.intent.id) }
         SecondaryButton("송금 취소") { model.cancelTransfer(record.intent.id, home) }
     }) {
-        Space(12); TraceSignature(); Space(24); Headline("보내기 전에\n하나만 확인해 주세요.")
-        Space(16); Body("아직 돈은 나가지 않았습니다.")
-        Space(10); Body("최근 확인하지 않은 링크와 이 송금이 가까운 시간 안에 이어졌어요.", subdued = true)
-        Space(28); SurfaceBox { Money(record.intent.amount, hero = false); Space(8); Body("${record.intent.recipient.name} · ${record.intent.recipient.bank}") }
-        Space(24); NumberedReason(1, "받는 분과 금액을 확인하세요.", "상대가 보내준 링크가 아닌, 이미 알고 있던 연락처나 공식 앱에서 확인하세요.")
-        Space(12); Rule()
-        Row(Modifier.fillMaxWidth().heightIn(min = 72.dp)
-            .toggleable(value = checked, role = Role.Checkbox, onValueChange = { checked = it })
-            .testTag("warn_check").semantics { stateDescription = if (checked) "확인함" else "확인하지 않음" }.padding(vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Checkbox(checked, onCheckedChange = null, modifier = Modifier.clearAndSetSemantics {},
-                colors = CheckboxDefaults.colors(checkedColor = TraceColors.Ink))
+        Space(6); TraceSignature(); Space(18)
+        MicroLabel("한 번 더 확인", coral = true); Space(7)
+        Headline("보내기 전에\n하나만 확인해 주세요.")
+        Space(14)
+        Text("아직 돈은 나가지 않았습니다.", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+        Space(7)
+        Body("최근 확인하지 않은 링크와 이 송금이 가까운 시간 안에 이어졌어요.", subdued = true)
+        Space(22)
+        SurfaceBox(tint = TraceColors.SurfaceRaised) {
+            Money(record.intent.amount, hero = false)
+            Space(7)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                RecipientGlyph(record.intent.recipient.name, Modifier.size(34.dp))
+                Body("${record.intent.recipient.name} · ${record.intent.recipient.bank}")
+            }
+        }
+        Space(20)
+        NumberedReason(1, "받는 분과 금액을 다른 경로로 확인하세요.", "상대가 보내준 링크가 아니라, 이미 알고 있던 연락처나 공식 앱을 사용하세요.")
+        Space(8); Rule()
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 72.dp)
+                .toggleable(value = checked, role = Role.Checkbox, onValueChange = { checked = it })
+                .testTag("warn_check")
+                .semantics { stateDescription = if (checked) "확인함" else "확인하지 않음" }
+                .padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Checkbox(
+                checked,
+                onCheckedChange = null,
+                modifier = Modifier.clearAndSetSemantics {},
+                colors = CheckboxDefaults.colors(checkedColor = TraceColors.Ink, uncheckedColor = TraceColors.DividerStrong)
+            )
             Text("다른 경로로 받는 분과 금액을 확인했어요.", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
         }
-        Space(12); Caption("확인 뒤 송금 내역과 인증을 다시 진행합니다. 새 위험 신호가 있으면 보류될 수 있어요.")
+        Space(8)
+        Caption("확인한 뒤 송금 내역과 인증을 다시 진행합니다. 새 위험 신호가 생기면 다시 멈출 수 있어요.")
     }
 }
 
-@Composable private fun VerifyScreen(record: TransferRecord, interaction: InteractionState, model: BankViewModel, back: () -> Unit, home: () -> Unit) {
+@Composable private fun VerifyScreen(
+    record: TransferRecord,
+    interaction: InteractionState,
+    model: BankViewModel,
+    back: () -> Unit,
+    home: () -> Unit
+) {
     val person = record.intent.recipient.kind == RecipientKind.PERSON
     Page(title = "상환 경로 확인", tag = "trace_verify", back = back, footer = {
-        PrimaryButton(if (interaction.routeLoading) "공식 경로를 확인하고 있어요." else "공식 상환 경로 확인", Modifier.testTag("verify_route"), enabled = !interaction.busy) { model.resolveRoute(record.intent.id) }
+        PrimaryButton(
+            if (interaction.routeLoading) "공식 경로를 확인하고 있어요." else "공식 상환 경로 확인",
+            Modifier.testTag("verify_route"), enabled = !interaction.busy, accent = true
+        ) { model.resolveRoute(record.intent.id) }
         SecondaryButton("송금 취소") { model.cancelTransfer(record.intent.id, home) }
     }) {
-        Space(12); TraceSignature(); Space(24); Headline(if (person) "대출을 갚는\n돈이 맞나요?" else "등록된 상환 경로를\n다시 확인할게요.")
-        Space(16); Body("아직 돈은 나가지 않았습니다.")
-        Space(10); Body(if (person) "안내받은 계좌는 개인 계좌예요. 공식 상환 경로를 먼저 확인할게요." else
-            "이 계좌가 현재 대출에 등록된 상환처인지 확인한 뒤, 새 거래로 인증합니다.", subdued = true)
-        Space(28)
-        SurfaceBox { Caption(if (person) "안내받은 개인 계좌" else "조회가 필요한 상환 계좌"); Space(8)
-            Money(record.intent.amount, hero = false); Space(10); Body(record.intent.recipient.name)
-            Space(6); Caption("${record.intent.recipient.bank} · ${record.intent.recipient.account}") }
-        Space(26)
-        if (RiskType.LOAN_REPAYMENT_REQUEST in record.reasons) NumberedReason(1, "앞선 요청의 목적", "대출 선상환 요청이 현재 송금과 이어졌어요.")
-        else NumberedReason(1, "보내는 목적", "대출 상환")
-        Rule(); NumberedReason(2, "받는 곳", if (person) "확인된 은행 상환 계좌가 아닌 개인 계좌" else "대출에 등록된 경로와 일치하는지 조회 필요")
-        Space(20); Caption("상대가 알려준 번호나 링크로 확인하지 않아요. 새온은행에 준비된 시연 응답을 사용합니다.")
+        Space(6); TraceSignature(); Space(18); AccentRule(34); Space(16)
+        MicroLabel("독립 확인 필요", coral = true); Space(7)
+        Headline(if (person) "대출을 갚는 돈이\n개인 계좌로 향하고 있어요." else "등록된 상환 경로를\n다시 확인할게요.")
+        Space(14)
+        Text("아직 돈은 나가지 않았습니다.", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+        Space(7)
+        Body(
+            if (person) "대출 상환이라고 했지만 받는 곳은 개인 계좌예요. 상대가 준 경로와 분리해서 확인합니다."
+            else "이 계좌가 현재 대출에 등록된 상환처인지 확인한 뒤 새 거래로 인증합니다.",
+            subdued = true
+        )
+        Space(22)
+        SurfaceBox(tint = TraceColors.CoralWash) {
+            MicroLabel(if (person) "안내받은 개인 계좌" else "확인이 필요한 상환 계좌", coral = true)
+            Space(8); Money(record.intent.amount, hero = false)
+            Space(8); Text(record.intent.recipient.name, style = MaterialTheme.typography.titleSmall)
+            Space(3); Caption("${record.intent.recipient.bank} · ${record.intent.recipient.account}")
+        }
+        Space(22)
+        SectionTitle("왜 다시 확인하나요?")
+        if (RiskType.LOAN_REPAYMENT_REQUEST in record.reasons) {
+            NumberedReason(1, "앞선 요청의 목적", "기존 대출을 먼저 갚으라는 요청이 현재 송금과 이어졌어요.", accent = true)
+        } else {
+            NumberedReason(1, "보내는 목적", "대출 상환", accent = true)
+        }
+        Rule()
+        NumberedReason(2, "받는 곳", if (person) "확인된 은행 상환 계좌가 아닌 개인 계좌" else "대출에 등록된 경로와 일치하는지 조회 필요")
+        Space(16)
+        Caption("상대가 알려준 번호나 링크는 사용하지 않습니다. 새온은행 앱 안의 가상 공식 경로를 사용합니다.")
     }
 }
 
-@Composable private fun OfficialRouteScreen(record: TransferRecord, interaction: InteractionState, model: BankViewModel, back: () -> Unit) {
+@Composable private fun OfficialRouteScreen(
+    record: TransferRecord,
+    interaction: InteractionState,
+    model: BankViewModel,
+    back: () -> Unit
+) {
     val route = record.route
     Page(title = "확인된 상환 경로", tag = "trace_official_route", back = back, footer = {
-        PrimaryButton("새 송금 내역 확인", Modifier.testTag("official_route_use"), enabled = route != null && !interaction.busy) { model.useRoute(record.intent.id) }
-        QuietButton(if (interaction.routeLoading) "경로를 다시 확인하고 있어요." else "공식 경로 다시 확인", Modifier.fillMaxWidth().testTag("official_route_refresh"), enabled = !interaction.busy) { model.resolveRoute(record.intent.id) }
-    }) {
-        Space(12); TraceSignature(); Space(24); Headline("보내는 목적에 맞는\n받는 곳을 찾았어요.")
-        Space(16); Body("아직 송금하지 않았습니다.")
-        Space(28)
-        if (route != null) SurfaceBox {
-            AppIcon(BankIcons.Bank); Space(16)
-            Text(route.recipient.name, style = MaterialTheme.typography.titleMedium); Space(10)
-            Caption("${route.recipient.bank} · ${route.recipient.account}"); Space(8); Body(route.productName)
+        PrimaryButton("새 송금 내역 확인", Modifier.testTag("official_route_use"), enabled = route != null && !interaction.busy) {
+            model.useRoute(record.intent.id)
         }
-        Space(24); DetailRow("이전 받는 분", record.intent.recipient.name)
+        QuietButton(
+            if (interaction.routeLoading) "경로를 다시 확인하고 있어요." else "공식 경로 다시 확인",
+            Modifier.fillMaxWidth().testTag("official_route_refresh"),
+            enabled = !interaction.busy
+        ) { model.resolveRoute(record.intent.id) }
+    }) {
+        Space(6); TraceSignature(); Space(18)
+        MicroLabel("확인된 경로", coral = true); Space(7)
+        Headline("보내는 목적에 맞는\n받는 곳을 찾았어요.")
+        Space(14)
+        Text("아직 송금하지 않았습니다.", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+        Space(20)
+        if (route != null) {
+            SurfaceBox(tint = TraceColors.SurfaceRaised) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.size(38.dp).background(TraceColors.Soft, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                        AppIcon(BankIcons.Bank, size = 20)
+                    }
+                    Column(Modifier.weight(1f)) {
+                        Text(route.recipient.name, style = MaterialTheme.typography.titleSmall)
+                        Space(3); Caption("${route.recipient.bank} · ${route.recipient.account}")
+                    }
+                }
+                Space(14); Rule(); Space(10)
+                DetailRow("연결된 상품", route.productName)
+                DetailRow("보낼 금액", "${won(record.intent.amount)}원", true)
+            }
+        }
+        Space(20)
+        EditorialPanel(accent = true) {
+            Body("수취인이 바뀌었으므로 새로운 송금입니다.")
+            Space(5); Caption("금액과 받는 곳을 다시 보고, 새로 인증해야 합니다.")
+        }
+        Space(18)
+        DetailRow("이전 받는 분", record.intent.recipient.name)
         DetailRow("유지되는 금액", "${won(record.intent.amount)}원", true)
-        Space(18); Rule(); Space(24)
-        Body("수취인이 바뀌었으므로 새로운 송금입니다. 내역을 다시 보고, 새로 인증해야 해요.")
-        Space(20); Caption("새온은행 Demo Gateway의 등록된 가상 응답입니다. 실제 은행 조회가 아닙니다.")
+        Space(12); SimulationNote()
     }
 }
 
-@Composable private fun UnknownScreen(record: TransferRecord, interaction: InteractionState, model: BankViewModel, back: () -> Unit, home: () -> Unit) {
+@Composable private fun UnknownScreen(
+    record: TransferRecord,
+    interaction: InteractionState,
+    model: BankViewModel,
+    back: () -> Unit,
+    home: () -> Unit
+) {
     Page(title = "공식 경로 확인 불가", tag = "trace_unknown", back = back, footer = {
-        PrimaryButton(if (interaction.routeLoading) "다시 확인하고 있어요." else "공식 경로 다시 확인", Modifier.testTag("unknown_retry"), enabled = !interaction.busy) { model.resolveRoute(record.intent.id) }
+        PrimaryButton(
+            if (interaction.routeLoading) "다시 확인하고 있어요." else "공식 경로 다시 확인",
+            Modifier.testTag("unknown_retry"), enabled = !interaction.busy, accent = true
+        ) { model.resolveRoute(record.intent.id) }
         SecondaryButton("송금 취소") { model.cancelTransfer(record.intent.id, home) }
     }) {
-        Space(12); AppIcon(BankIcons.Lock, tint = TraceColors.Deep, size = 30); Space(26)
+        Space(8); TraceSignature(); Space(18); AccentRule(34); Space(16)
+        MicroLabel("확인 실패", coral = true); Space(7)
         Headline("확인할 수 없으면,\n보내지 않습니다.")
-        Space(18); Body("아직 돈은 나가지 않았습니다.")
-        Space(12); Body("공식 경로를 확인하지 못했어요. 확인되지 않았다는 건 안전하다는 뜻이 아닙니다.", subdued = true)
-        Space(28); SurfaceBox { Money(record.intent.amount, hero = false); Space(10); Body("${record.intent.recipient.name}님에게 보내려던 돈") }
-        Space(26); NumberedReason(1, "잔액은 바뀌지 않았어요.")
+        Space(14)
+        Text("아직 돈은 나가지 않았습니다.", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+        Space(7)
+        Body("공식 경로를 확인하지 못했어요. 확인되지 않았다는 건 안전하다는 뜻이 아닙니다.", subdued = true)
+        Space(22)
+        SurfaceBox(tint = TraceColors.CoralWash) {
+            Money(record.intent.amount, hero = false)
+            Space(7); Body("${record.intent.recipient.name}님에게 보내려던 돈")
+        }
+        Space(20)
+        NumberedReason(1, "잔액은 바뀌지 않았어요.", accent = true)
         Rule(); NumberedReason(2, "송금 완료 내역을 만들지 않았어요.")
-        Rule(); NumberedReason(3, "일반 송금으로 전환하지 않아요.")
-        Space(20); Caption("확인이 안 될 때는 앱을 닫아도 괜찮아요. 보류 상태는 안전 센터에서 다시 볼 수 있습니다.")
+        Rule(); NumberedReason(3, "일반 송금으로 자동 전환하지 않아요.")
+        Space(16)
+        Caption("확인이 안 될 때는 앱을 닫아도 괜찮아요. 보류 상태는 안전 센터에서 다시 볼 수 있습니다.")
     }
 }
 
@@ -497,18 +645,31 @@ import app.saeon.trace.ui.design.*
         PrimaryButton("확인", Modifier.testTag("complete_confirm"), onClick = home)
         SecondaryButton("송금 내역") { open("receipt/${receipt.id}") }
     }) {
-        Space(36); AppIcon(BankIcons.Check, size = 42); Space(30)
-        Money(receipt.amount); Space(16)
-        Text(if (record.intent.purpose == Purpose.LOAN) "공식 경로로\n상환을 마쳤어요." else "${receipt.recipient.name}님에게\n보냈어요.",
-            style = MaterialTheme.typography.headlineSmall, modifier = Modifier.semantics { heading() })
-        Space(28); Rule(); Space(10)
-        DetailRow("받는 분", receipt.recipient.name)
-        DetailRow("받는 계좌", "${receipt.recipient.bank}\n${receipt.recipient.account}")
-        DetailRow("출금 계좌", receipt.fromAccount)
-        DetailRow("보낸 금액", "${won(receipt.amount)}원", true)
-        DetailRow("수수료", "0원")
-        DetailRow("시간", dateLabel(receipt.completedAt))
-        Space(20); Caption("${receipt.id} · 시연 기록")
-        Space(10); SimulationNote()
+        Space(28)
+        Box(Modifier.size(44.dp).background(TraceColors.Ink, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) {
+            AppIcon(BankIcons.Check, size = 24, tint = TraceColors.White)
+        }
+        Space(26)
+        Money(receipt.amount)
+        Space(12)
+        Text(
+            if (record.intent.purpose == Purpose.LOAN) "공식 경로로\n상환을 마쳤어요."
+            else "${receipt.recipient.name}님에게\n보냈어요.",
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.semantics { heading() }
+        )
+        Space(24)
+        SurfaceBox(tint = TraceColors.SurfaceRaised) {
+            DetailRow("받는 분", receipt.recipient.name)
+            Rule(); DetailRow("받는 계좌", "${receipt.recipient.bank}\n${receipt.recipient.account}")
+            Rule(); DetailRow("출금 계좌", receipt.fromAccount)
+            Rule(); DetailRow("보낸 금액", "${won(receipt.amount)}원", true)
+            Rule(); DetailRow("수수료", "0원")
+            Rule(); DetailRow("시간", dateLabel(receipt.completedAt))
+        }
+        Space(18)
+        Caption("${receipt.id} · 시연 기록")
+        Space(8); SimulationNote()
     }
 }
+

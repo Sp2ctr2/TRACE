@@ -51,7 +51,10 @@ object Fixtures {
                 e(RiskType.URGENCY, 2, "지금 바로 이체 요청"),
                 e(RiskType.FINANCIAL_INSTRUCTION, 2, "안전계좌로 자금 이동 요구")
             )
-            DemoScenario.LOAN, DemoScenario.UNKNOWN -> listOf(e(RiskType.FINANCIAL_INSTRUCTION, 2, "대출을 바꾸기 위한 선상환 요구"))
+            DemoScenario.LOAN, DemoScenario.UNKNOWN -> listOf(
+                e(RiskType.FINANCIAL_INSTRUCTION, 2, "대출을 바꾸기 위한 선상환 요구"),
+                e(RiskType.LOAN_REPAYMENT_REQUEST, 2, "기존 대출을 먼저 갚으라는 요청")
+            )
             DemoScenario.WARN -> listOf(
                 e(RiskType.SUSPICIOUS_LINK, 3, "상대가 보낸 주문 확인 링크"),
                 e(RiskType.FINANCIAL_INSTRUCTION, 1, "링크를 확인한 뒤 입금 요청")

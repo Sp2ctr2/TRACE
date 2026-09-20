@@ -99,7 +99,7 @@ object BankEngine {
     fun resolveRoute(state: BankState, id: String, now: Long, available: Boolean): BankState {
         val record = state.record(id)
         requireBank(record.stage in setOf(TransferStage.VERIFY, TransferStage.UNKNOWN), "ROUTE_STATE", "현재 거래는 상환 경로 조회 대상이 아니에요. 송금을 실행하지 않았습니다.")
-        requireBank(record.intent.purpose == Purpose.LOAN, "ROUTE_PURPOSE", "대출 상환 거래가 아니에요. 송금을 실행하지 않았습니다.")
+        requireBank(BankPolicy.repaymentRequested(record, state.context, now), "ROUTE_PURPOSE", "대출 상환 거래가 아니에요. 송금을 실행하지 않았습니다.")
         if (!available) return state.withRecord(record.copy(stage = TransferStage.UNKNOWN, route = null, authorization = null, challenge = null)).copy(updatedAt = now)
         val route = OfficialRoute(newId(), id, Fixtures.official, Fixtures.LOAN_ID, Fixtures.LOAN_NAME, now, now + 5 * 60_000)
         return state.withRecord(record.copy(stage = TransferStage.ROUTE, route = route, authorization = null, challenge = null)).copy(updatedAt = now)
@@ -110,6 +110,7 @@ object BankEngine {
         requireBank(old.stage == TransferStage.ROUTE && route.sourceIntentId == id && route.expiresAt > now && route.issuedAt <= now,
             "ROUTE_EXPIRED", "공식 경로 확인 시간이 지났어요. 다시 조회해 주세요. 돈은 나가지 않았습니다.")
         requireBank(newIntentId != id && state.records.none { it.intent.id == newIntentId }, "NEW_INTENT_REQUIRED", "새 거래 번호가 필요해요. 이전 인증은 사용할 수 없습니다. 돈은 나가지 않았습니다.")
+        validateAmount(state, old.intent.amount, Purpose.LOAN, now)
         val intent = TransactionIntent(newIntentId, old.intent.amount, route.recipient, Purpose.LOAN, now,
             originIntentId = id, officialRouteId = route.id)
         requireBank(BankPolicy.routeValid(intent, route, now), "ROUTE_INVALID", "공식 상환 경로가 일치하지 않아요. 송금을 실행하지 않았습니다.")

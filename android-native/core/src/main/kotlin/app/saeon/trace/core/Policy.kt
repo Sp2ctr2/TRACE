@@ -11,12 +11,18 @@ object BankPolicy {
         intent.recipient == Fixtures.official && intent.purpose == Purpose.LOAN &&
         intent.originIntentId == route.sourceIntentId && intent.officialRouteId == route.id
 
+    // The user's purpose picker cannot erase a recent, independently observed
+    // repayment request. A verified route still creates a distinct loan intent.
+    fun repaymentRequested(record: TransferRecord, context: RiskContext, now: Long): Boolean =
+        record.intent.purpose == Purpose.LOAN ||
+            context.relevant(record.intent, now).any { it.type == RiskType.LOAN_REPAYMENT_REQUEST }
+
     fun evaluate(record: TransferRecord, context: RiskContext, now: Long): Evaluation {
         val intent = record.intent
         val types = context.relevant(intent, now).map { it.type }.toMutableSet()
         if (!intent.recipient.known) types += RiskType.NEW_RECIPIENT
         val trustedRoute = routeValid(intent, record.route, now)
-        if (intent.purpose == Purpose.LOAN && !trustedRoute) types += RiskType.PURPOSE_RECIPIENT_MISMATCH
+        if (repaymentRequested(record, context, now) && !trustedRoute) types += RiskType.PURPOSE_RECIPIENT_MISMATCH
         val base = when {
             RiskType.IMPERSONATION in types && RiskType.FINANCIAL_INSTRUCTION in types &&
                 (RiskType.URGENCY in types || RiskType.NEW_RECIPIENT in types) -> PolicyDecision.HOLD
@@ -48,6 +54,9 @@ object SignalExtractor {
         if (listOf("지금", "즉시", "바로", "당장", "오늘 안", "긴급", "서둘러").any(text::contains)) types += RiskType.URGENCY
         if (Regex("(?:https?://|www\\.)\\S+", RegexOption.IGNORE_CASE).containsMatchIn(text)) types += RiskType.SUSPICIOUS_LINK
         if (listOf("송금", "입금", "이체", "상환", "보내세요", "보내주", "갚아", "돈을 옮").any(text::contains)) types += RiskType.FINANCIAL_INSTRUCTION
+        val mentionsLoan = listOf("대출", "저금리", "대환").any(text::contains)
+        val mentionsRepayment = listOf("갚", "상환", "먼저 입금", "선입금").any(text::contains)
+        if (mentionsLoan && mentionsRepayment) types += RiskType.LOAN_REPAYMENT_REQUEST
         return types.map { type -> RiskEvent(newId(), type, now, now + Fixtures.EVENT_TTL, source, type.explanation) }
     }
 }

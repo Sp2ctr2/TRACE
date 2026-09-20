@@ -27,6 +27,7 @@ enum class RiskType(val label: String, val explanation: String) {
     URGENCY("즉시 송금 요구", "확인할 시간을 주지 않고 바로 보내라고 했어요."),
     SUSPICIOUS_LINK("확인하지 않은 링크", "상대가 보낸 링크가 금융 행동 요청과 가까운 시간에 나타났어요."),
     FINANCIAL_INSTRUCTION("금융 행동 요청", "계좌 이체나 대출 상환을 요구하는 내용이 있었어요."),
+    LOAN_REPAYMENT_REQUEST("대출 상환 요청", "대출을 갚거나 바꾸기 위해 먼저 돈을 보내라는 요청이 있었어요."),
     NEW_RECIPIENT("새로운 수취인", "이 요청 뒤에 처음 보내는 계좌가 입력됐어요."),
     PURPOSE_RECIPIENT_MISMATCH("목적과 받는 곳의 불일치", "대출을 갚는 돈이지만 받는 곳은 확인된 상환 계좌가 아니에요.")
 }

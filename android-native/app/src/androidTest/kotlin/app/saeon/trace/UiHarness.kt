@@ -7,6 +7,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import app.saeon.trace.core.*
 import kotlinx.coroutines.runBlocking
@@ -29,6 +30,21 @@ abstract class UiHarness {
     val repository get() = graph.repository
     val device get() = UiDevice.getInstance(instrumentation)
     val state get() = checkNotNull(repository.state.value)
+    fun recoverKnownEmulatorSystemDialog() {
+        val launcherAnr = device.findObject(By.text("Pixel Launcher isn't responding"))
+            ?: device.findObject(By.textContains("Pixel Launcher isn't responding"))
+        if (launcherAnr != null) {
+            val close = device.findObject(By.res("android:id/aerr_close"))
+                ?: throw AssertionError("Pixel Launcher ANR is visible but its close control cannot be identified")
+            close.click()
+            device.waitForIdle()
+        }
+    }
+    fun pressPhysicalBack() {
+        recoverKnownEmulatorSystemDialog()
+        device.pressBack()
+        device.waitForIdle()
+    }
     private val pass get() = InstrumentationRegistry.getArguments().getString("pass") ?: "local"
     val output: File get() = File(context.getExternalFilesDir(null), "verification/$pass").apply { mkdirs() }
     @get:Rule val captureFailure = object : TestWatcher() {
@@ -37,8 +53,10 @@ abstract class UiHarness {
         }
     }
     fun awaitReady() {
+        recoverKnownEmulatorSystemDialog()
         compose.waitUntil(15_000) { repository.state.value != null && compose.activity.navigation != null }
         compose.waitForIdle()
+        recoverKnownEmulatorSystemDialog()
     }
     fun fresh(scenario: DemoScenario = DemoScenario.NORMAL) {
         awaitReady()
@@ -156,6 +174,10 @@ internal data class TextOverflowMetric(val occupiedWidth: Float, val dx: Float, 
 internal fun textOverflow(text: TextLayoutResult): TextOverflowMetric {
     val occupied = (0 until text.lineCount).maxOfOrNull { text.getLineRight(it) - text.getLineLeft(it) } ?: 0f
     val bottom = (0 until text.lineCount).maxOfOrNull { text.getLineBottom(it) } ?: 0f
-    val omitted = text.multiParagraph.didExceedMaxLines || (0 until text.lineCount).any { text.isLineEllipsized(it) }
+    val explicitLines = text.layoutInput.text.text.count { it == '\n' } + 1
+    val hardBreakTruncated = text.layoutInput.maxLines >= explicitLines && text.lineCount < explicitLines
+    val omitted = text.multiParagraph.didExceedMaxLines ||
+        (0 until text.lineCount).any { text.isLineEllipsized(it) } ||
+        hardBreakTruncated
     return TextOverflowMetric(occupied, occupied - text.size.width, maxOf(bottom, text.multiParagraph.height) - text.size.height, omitted)
 }

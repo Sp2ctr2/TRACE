@@ -3,9 +3,16 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 PACKAGE=app.saeon.trace.demo
 RUNNER="$PACKAGE.test/androidx.test.runner.AndroidJUnitRunner"
-mkdir -p verification/logs verification/apk
+mkdir -p verification/logs
+rm -f verification/pass-*.passed verification/verification.json verification/VERIFICATION.md
+rm -f verification/logs/pass-*.txt verification/logs/matrix-*.txt verification/logs/dark-system-forced-light.txt
+rm -rf verification/screens verification/apk
+mkdir -p verification/apk
 collect() {
+  rm -rf verification/screens
   adb pull "/sdcard/Android/data/$PACKAGE/files/verification" verification/screens >/dev/null 2>&1 || true
+  adb shell dumpsys activity lastanr > verification/logs/last-anr.txt 2>/dev/null || true
+  adb logcat -d -v threadtime ActivityManager:I AndroidRuntime:E '*:S' > verification/logs/activity-events.txt 2>/dev/null || true
   adb logcat -b crash -d > verification/logs/crash-buffer.txt 2>/dev/null || true
   adb shell dumpsys gfxinfo "$PACKAGE" framestats > verification/logs/frame-stats.txt 2>/dev/null || true
   adb shell dumpsys accessibility > verification/logs/accessibility-services.txt 2>/dev/null || true
@@ -15,6 +22,14 @@ collect() {
 }
 trap collect EXIT
 adb wait-for-device
+# This dedicated test AVD does not need Pixel Launcher. Its first-boot ANR
+# obscured the app during display-size changes; never suppress app ANRs.
+if adb shell pm path com.google.android.apps.nexuslauncher | grep -q '^package:'; then
+  adb shell am force-stop com.google.android.apps.nexuslauncher
+  adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher | tee verification/logs/launcher-isolation.txt
+fi
+adb shell settings put system screen_off_timeout 1800000
+adb shell svc power stayon true
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
 adb shell settings put global animator_duration_scale 0

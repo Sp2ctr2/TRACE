@@ -99,7 +99,8 @@ object BankEngine {
     fun resolveRoute(state: BankState, id: String, now: Long, available: Boolean): BankState {
         val record = state.record(id)
         requireBank(record.stage in setOf(TransferStage.VERIFY, TransferStage.UNKNOWN), "ROUTE_STATE", "현재 거래는 상환 경로 조회 대상이 아니에요. 송금을 실행하지 않았습니다.")
-        requireBank(record.intent.purpose == Purpose.LOAN, "ROUTE_PURPOSE", "대출 상환 거래가 아니에요. 송금을 실행하지 않았습니다.")
+        requireBank(record.intent.purpose == Purpose.LOAN || RiskType.LOAN_REPAYMENT_REQUEST in record.reasons,
+            "ROUTE_PURPOSE", "대출 상환 요청을 확인하지 못했어요. 송금을 실행하지 않았습니다.")
         if (!available) return state.withRecord(record.copy(stage = TransferStage.UNKNOWN, route = null, authorization = null, challenge = null)).copy(updatedAt = now)
         val route = OfficialRoute(newId(), id, Fixtures.official, Fixtures.LOAN_ID, Fixtures.LOAN_NAME, now, now + 5 * 60_000)
         return state.withRecord(record.copy(stage = TransferStage.ROUTE, route = route, authorization = null, challenge = null)).copy(updatedAt = now)

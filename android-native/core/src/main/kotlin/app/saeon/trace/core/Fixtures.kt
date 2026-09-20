@@ -38,10 +38,11 @@ object Fixtures {
         DemoScenario.WARN -> "보낸 링크에서 주문을 확인하고 이 계좌로 입금해 주세요."
     }
     fun events(scenario: DemoScenario, now: Long): List<RiskEvent> {
-        val target = recipient(scenario).id
+        // Request-level evidence predates payee entry and follows the active
+        // session. It must not disappear when the user edits the recipient.
         fun e(type: RiskType, minutesAgo: Int, summary: String) = RiskEvent(
             "fixture-${scenario.name}-${type.name}-$now", type, now - minutesAgo * 60_000L,
-            now + EVENT_TTL, RiskSource.DEMO_FIXTURE, summary, target
+            now + EVENT_TTL, RiskSource.DEMO_FIXTURE, summary
         )
         return when (scenario) {
             DemoScenario.NORMAL -> emptyList()
@@ -51,7 +52,10 @@ object Fixtures {
                 e(RiskType.URGENCY, 2, "지금 바로 이체 요청"),
                 e(RiskType.FINANCIAL_INSTRUCTION, 2, "안전계좌로 자금 이동 요구")
             )
-            DemoScenario.LOAN, DemoScenario.UNKNOWN -> listOf(e(RiskType.FINANCIAL_INSTRUCTION, 2, "대출을 바꾸기 위한 선상환 요구"))
+            DemoScenario.LOAN, DemoScenario.UNKNOWN -> listOf(
+                e(RiskType.LOAN_REPAYMENT_REQUEST, 3, "기존 대출을 먼저 갚으라는 안내"),
+                e(RiskType.FINANCIAL_INSTRUCTION, 2, "개인 계좌로 선상환 요구")
+            )
             DemoScenario.WARN -> listOf(
                 e(RiskType.SUSPICIOUS_LINK, 3, "상대가 보낸 주문 확인 링크"),
                 e(RiskType.FINANCIAL_INSTRUCTION, 1, "링크를 확인한 뒤 입금 요청")

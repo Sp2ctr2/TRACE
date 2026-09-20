@@ -138,4 +138,36 @@ class BankUiFlowTest : UiHarness() {
         assertTrue(state.receipts.none { !it.seed })
         assertNull(state.current!!.authorization)
     }
+    @Test fun reviewRespondsToChangedBalanceAndDailyLimitBeforeAuthentication() {
+        fresh(); createReview(DemoScenario.NORMAL)
+        compose.onNodeWithTag("transfer_confirm").assertIsEnabled()
+        runBlocking { repository.setLimit(10_000) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("transfer_confirm").assertIsNotEnabled()
+        runBlocking { repository.setLimit(10_000_000) }
+        compose.waitForIdle()
+        compose.onNodeWithTag("transfer_confirm").assertIsEnabled()
+        runBlocking { repository.change { current, _ -> current.copy(balance = 10_000) } }
+        compose.waitForIdle()
+        compose.onNodeWithTag("transfer_confirm").assertIsNotEnabled()
+        assertNull(state.current!!.authorization)
+        assertTrue(state.receipts.none { !it.seed })
+    }
+    @Test fun changingLoanPurposeInTheAmountEditorCannotBypassVerification() {
+        fresh(DemoScenario.LOAN); tap("home_transfer"); tap("recipient_park", scroll = true)
+        tap("transfer_purpose", scroll = true)
+        compose.onNodeWithText("생활비").performScrollTo().performClick()
+        tap("amount_next"); waitScreen("transfer_review")
+        assertEquals(Purpose.LIVING, state.current!!.intent.purpose)
+        confirmThroughUi("trace_verify")
+        assertEquals(Fixtures.START_BALANCE, state.balance)
+        assertTrue(state.receipts.none { !it.seed })
+        tap("verify_route"); waitScreen("trace_official_route")
+        tap("official_route_use"); waitScreen("transfer_review")
+        assertEquals(Purpose.LOAN, state.current!!.intent.purpose)
+        assertNull(state.current!!.authorization)
+        confirmThroughUi("transfer_complete")
+        assertEquals(0L, state.loanBalance)
+    }
+
 }

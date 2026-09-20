@@ -11,6 +11,7 @@ import androidx.test.uiautomator.UiDevice
 import app.saeon.trace.core.*
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
+import org.junit.After
 import org.junit.Rule
 import org.junit.rules.TestWatcher
 import org.junit.runner.Description
@@ -26,6 +27,10 @@ abstract class UiHarness {
     val state get() = checkNotNull(repository.state.value)
     private val pass get() = InstrumentationRegistry.getArguments().getString("pass") ?: "local"
     val output: File get() = File(context.getExternalFilesDir(null), "verification/$pass").apply { mkdirs() }
+    private val layoutFailures = mutableListOf<String>()
+    @After fun assertCapturedLayouts() {
+        assertTrue("Captured layout defects:\n${layoutFailures.joinToString("\n")}", layoutFailures.isEmpty())
+    }
     @get:Rule val captureFailure = object : TestWatcher() {
         override fun failed(error: Throwable?, description: Description?) {
             runCatching { capture("failure_${description?.methodName ?: "unknown"}", audit = false) }
@@ -124,10 +129,18 @@ abstract class UiHarness {
             if (visible) {
                 val result = mutableListOf<TextLayoutResult>()
                 node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(result)
-                result.filter { it.hasVisualOverflow }.forEach { issues += "Text overflow ${node.id}: ${it.layoutInput.text}" }
+                result.filter { it.hasVisualOverflow }.forEach {
+                    issues += "Text overflow ${node.id}: ${it.layoutInput.text}\n" +
+                        "size=${it.size}, paragraph=${it.multiParagraph.width}x${it.multiParagraph.height}, " +
+                        "width=${it.didOverflowWidth}, height=${it.didOverflowHeight}, " +
+                        "lines=${it.lineCount}, exceeded=${it.multiParagraph.didExceedMaxLines}, " +
+                        "constraints=${it.layoutInput.constraints}, style=${it.layoutInput.style}"
+                }
             }
         }
         File(output, "$name.audit.txt").writeText(if (issues.isEmpty()) "PASS: visible text layout and 48dp interactive bounds\n" else issues.joinToString("\n"))
-        assertTrue("$name layout audit:\n${issues.joinToString("\n")}", issues.isEmpty())
+        // Capture the remaining golden screens before failing the enclosing test.
+        // No failing audit is converted to a pass or omitted from the report.
+        layoutFailures += issues.map { "$name: $it" }
     }
 }

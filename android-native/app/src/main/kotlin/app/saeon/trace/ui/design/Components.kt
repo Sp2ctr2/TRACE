@@ -63,8 +63,14 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
     actions: (@Composable RowScope.() -> Unit)? = null, footer: (@Composable ColumnScope.() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Box(Modifier.fillMaxSize().testTag(tag), contentAlignment = Alignment.TopCenter) {
-        Column(Modifier.widthIn(max = 600.dp).fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize().testTag(tag), contentAlignment = Alignment.TopCenter) {
+        // In landscape or above an IME, a pinned footer must not consume the
+        // entire reading viewport. Keep the complete page scroll-reachable.
+        val compactHeight = maxHeight < 480.dp
+        val pageScroll = rememberScrollState()
+        val bodyScroll = rememberScrollState()
+        Column(Modifier.widthIn(max = 600.dp).fillMaxSize()
+            .then(if (compactHeight) Modifier.verticalScroll(pageScroll) else Modifier)) {
             if (title.isNotEmpty() || back != null || actions != null) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = if (back != null) 8.dp else 20.dp).heightIn(min = 60.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (back != null) IconAction(BankIcons.Back, "이전 화면", onClick = back)
@@ -73,7 +79,8 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
                     actions?.invoke(this)
                 }
             }
-            Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp)
+            val bodyModifier = if (compactHeight) Modifier else Modifier.weight(1f).verticalScroll(bodyScroll)
+            Column(bodyModifier.fillMaxWidth().padding(horizontal = 24.dp)
                 .padding(top = if (title.isEmpty()) 20.dp else 12.dp, bottom = 28.dp), content = content)
             if (footer != null) Column(Modifier.fillMaxWidth().background(TraceColors.Paper).padding(horizontal = 24.dp)
                 .padding(top = 8.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp), content = footer)

@@ -16,7 +16,10 @@ object BankPolicy {
         val types = context.relevant(intent, now).map { it.type }.toMutableSet()
         if (!intent.recipient.known) types += RiskType.NEW_RECIPIENT
         val trustedRoute = routeValid(intent, record.route, now)
-        if (intent.purpose == Purpose.LOAN && !trustedRoute) types += RiskType.PURPOSE_RECIPIENT_MISMATCH
+        // The selected purpose is not the source of truth for a request's purpose.
+        // Editing a dropdown cannot erase an active loan-repayment instruction.
+        if ((intent.purpose == Purpose.LOAN || RiskType.LOAN_REPAYMENT_REQUEST in types) && !trustedRoute)
+            types += RiskType.PURPOSE_RECIPIENT_MISMATCH
         val base = when {
             RiskType.IMPERSONATION in types && RiskType.FINANCIAL_INSTRUCTION in types &&
                 (RiskType.URGENCY in types || RiskType.NEW_RECIPIENT in types) -> PolicyDecision.HOLD
@@ -48,6 +51,11 @@ object SignalExtractor {
         if (listOf("지금", "즉시", "바로", "당장", "오늘 안", "긴급", "서둘러").any(text::contains)) types += RiskType.URGENCY
         if (Regex("(?:https?://|www\\.)\\S+", RegexOption.IGNORE_CASE).containsMatchIn(text)) types += RiskType.SUSPICIOUS_LINK
         if (listOf("송금", "입금", "이체", "상환", "보내세요", "보내주", "갚아", "돈을 옮").any(text::contains)) types += RiskType.FINANCIAL_INSTRUCTION
+        if (listOf("대출", "대환", "저금리").any(text::contains) &&
+            listOf("상환", "갚", "선입금", "먼저 입금").any(text::contains)) {
+            types += RiskType.LOAN_REPAYMENT_REQUEST
+            types += RiskType.FINANCIAL_INSTRUCTION
+        }
         return types.map { type -> RiskEvent(newId(), type, now, now + Fixtures.EVENT_TTL, source, type.explanation) }
     }
 }

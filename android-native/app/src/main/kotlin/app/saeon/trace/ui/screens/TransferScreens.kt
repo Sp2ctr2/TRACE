@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -214,7 +215,7 @@ import app.saeon.trace.ui.design.*
     }
     BackHandler(enabled = record.stage == TransferStage.EVALUATING) { model.cancelAuthorization(); back() }
     when (record.stage) {
-        TransferStage.REVIEW, TransferStage.AUTHORIZING -> ReviewScreen(record, interaction, model, open, back)
+        TransferStage.REVIEW, TransferStage.AUTHORIZING -> ReviewScreen(state, record, interaction, model, open, back)
         TransferStage.EVALUATING -> EvaluatingScreen { model.cancelAuthorization(); back() }
         TransferStage.HOLD -> HoldScreen(record, preferences.easyMode, model, open, back, home)
         TransferStage.WARN -> WarnScreen(record, interaction, model, back, home)
@@ -228,12 +229,15 @@ import app.saeon.trace.ui.design.*
     }
 }
 
-@Composable private fun ReviewScreen(record: TransferRecord, interaction: InteractionState, model: BankViewModel,
+@Composable private fun ReviewScreen(state: BankState, record: TransferRecord, interaction: InteractionState, model: BankViewModel,
                                      open: (String) -> Unit, back: () -> Unit) {
     val intent = record.intent
+    val amountError = runCatching {
+        BankEngine.validateAmount(state, intent.amount, intent.purpose, model.repository.clock.now())
+    }.exceptionOrNull()?.message
     Page(title = "보내기 전 확인", tag = "transfer_review", back = back, footer = {
         PrimaryButton("${won(intent.amount)}원 보내기", Modifier.testTag("transfer_confirm"),
-            enabled = !interaction.busy && record.stage == TransferStage.REVIEW) { model.requestAuthorization(intent.id) }
+            enabled = amountError == null && !interaction.busy && record.stage == TransferStage.REVIEW) { model.requestAuthorization(intent.id) }
     }) {
         Space(18); Money(intent.amount); Space(14)
         Text(if (intent.recipient.kind == RecipientKind.INSTITUTION) "${intent.recipient.name}로" else "${intent.recipient.name}님에게",
@@ -256,7 +260,8 @@ import app.saeon.trace.ui.design.*
                 model.editReview(intent.id) { open("amount") }
             }
         }
-        record.error?.let { ErrorNote(it) }
+        amountError?.let { ErrorNote(it) }
+        record.error?.takeIf { it != amountError }?.let { ErrorNote(it) }
         Space(24); SimulationNote()
     }
 }
@@ -295,7 +300,7 @@ import app.saeon.trace.ui.design.*
             Space(8); Body("기관 사칭과 급한 송금 요청이 이 거래와 연결돼, 잠시 멈췄어요.", subdued = true)
             Space(24)
             SurfaceBox {
-                Caption("처음 보내는 계좌"); Space(8); Money(record.intent.amount, hero = false)
+                Caption(if (record.intent.recipient.known) "저장된 수취인" else "처음 보내는 계좌"); Space(8); Money(record.intent.amount, hero = false)
                 Space(6); Text("${record.intent.recipient.name}님에게", style = MaterialTheme.typography.titleSmall)
                 Space(6); Caption("${record.intent.recipient.bank} · ${record.intent.recipient.account}")
             }
@@ -331,11 +336,13 @@ import app.saeon.trace.ui.design.*
         Space(28); SurfaceBox { Money(record.intent.amount, hero = false); Space(8); Body("${record.intent.recipient.name} · ${record.intent.recipient.bank}") }
         Space(24); NumberedReason(1, "받는 분과 금액을 확인하세요.", "상대가 보내준 링크가 아닌, 이미 알고 있던 연락처나 공식 앱에서 확인하세요.")
         Space(12); Rule()
-        Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clickable(role = Role.Checkbox) { checked = !checked }
+        Row(Modifier.fillMaxWidth().heightIn(min = 72.dp)
+            .toggleable(value = checked, role = Role.Checkbox, onValueChange = { checked = it })
             .testTag("warn_check").semantics { stateDescription = if (checked) "확인함" else "확인하지 않음" }.padding(vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Checkbox(checked, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = TraceColors.Ink))
-            Text("다른 경로로 받는 분과 금액을 확인했어요.", style = MaterialTheme.typography.bodyLarge)
+            Checkbox(checked, onCheckedChange = null, modifier = Modifier.clearAndSetSemantics {},
+                colors = CheckboxDefaults.colors(checkedColor = TraceColors.Ink))
+            Text("다른 경로로 받는 분과 금액을 확인했어요.", Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
         }
         Space(12); Caption("확인 뒤 송금 내역과 인증을 다시 진행합니다. 새 위험 신호가 있으면 보류될 수 있어요.")
     }
@@ -355,7 +362,9 @@ import app.saeon.trace.ui.design.*
         SurfaceBox { Caption(if (person) "안내받은 개인 계좌" else "조회가 필요한 상환 계좌"); Space(8)
             Money(record.intent.amount, hero = false); Space(10); Body(record.intent.recipient.name)
             Space(6); Caption("${record.intent.recipient.bank} · ${record.intent.recipient.account}") }
-        Space(26); NumberedReason(1, "보내는 목적", "대출 상환")
+        Space(26)
+        if (RiskType.LOAN_REPAYMENT_REQUEST in record.reasons) NumberedReason(1, "앞선 요청의 목적", "대출 선상환 요청이 현재 송금과 이어졌어요.")
+        else NumberedReason(1, "보내는 목적", "대출 상환")
         Rule(); NumberedReason(2, "받는 곳", if (person) "확인된 은행 상환 계좌가 아닌 개인 계좌" else "대출에 등록된 경로와 일치하는지 조회 필요")
         Space(20); Caption("상대가 알려준 번호나 링크로 확인하지 않아요. 새온은행에 준비된 시연 응답을 사용합니다.")
     }

@@ -309,8 +309,20 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
 
 @Composable fun RecipientGlyph(name: String, modifier: Modifier = Modifier) {
     val initial = name.firstOrNull()?.toString().orEmpty()
-    Box(modifier.size(40.dp).clip(CircleShape).background(TraceColors.Soft), contentAlignment = Alignment.Center) {
-        Text(initial, style = MaterialTheme.typography.labelLarge, color = TraceColors.InkSoft)
+    val scale = LocalDensity.current.fontScale
+    val avatarSize = when {
+        scale >= 1.75f -> 64.dp
+        scale >= 1.4f -> 52.dp
+        else -> 40.dp
+    }
+    Box(modifier.size(avatarSize).clip(CircleShape).background(TraceColors.Soft), contentAlignment = Alignment.Center) {
+        Text(
+            initial,
+            style = MaterialTheme.typography.labelLarge,
+            color = TraceColors.InkSoft,
+            maxLines = 1,
+            softWrap = false
+        )
     }
 }
 

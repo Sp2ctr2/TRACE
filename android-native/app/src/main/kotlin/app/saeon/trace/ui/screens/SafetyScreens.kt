@@ -123,7 +123,7 @@ private data class TimelineItem(val time: Long, val title: String, val descripti
     val context = LocalContext.current
     val record = state.current?.takeIf { it.stage in setOf(TransferStage.HOLD, TransferStage.VERIFY, TransferStage.UNKNOWN, TransferStage.WARN, TransferStage.ROUTE) }
     Page(title = "안전하게 확인하기", tag = "trace_safety_guide", back = back, footer = {
-        PrimaryButton("앱 안에서 공식 경로 열기", Modifier.testTag("safety_official_channel")) { open(if (record?.intent?.purpose == Purpose.LOAN) "loan" else "support") }
+        PrimaryButton("앱 안에서 공식 경로 열기", Modifier.testTag("safety_official_channel"), accent = record != null) { open(if (record?.intent?.purpose == Purpose.LOAN) "loan" else "support") }
     }) {
         Space(10); Headline("지금은 이렇게\n확인하세요."); Space(18)
         if (record != null) {

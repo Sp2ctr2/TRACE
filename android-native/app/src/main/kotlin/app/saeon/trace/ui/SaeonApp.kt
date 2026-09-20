@@ -113,23 +113,42 @@ fun SaeonApp(
                 }
                 if (route in roots) {
                     Rule()
-                    val tabs = listOf(Triple("home", "홈", BankIcons.Home), Triple("assets", "자산", BankIcons.Assets),
-                        Triple("transfer", "송금", BankIcons.Transfer), Triple("safety", "안전", BankIcons.Shield), Triple("more", "전체", BankIcons.More))
-                    Row(Modifier.fillMaxWidth().background(TraceColors.Surface).padding(vertical = 5.dp)) {
+                    val tabs = listOf(
+                        Triple("home", "홈", BankIcons.Home),
+                        Triple("assets", "자산", BankIcons.Assets),
+                        Triple("transfer", "송금", BankIcons.Transfer),
+                        Triple("safety", "안전", BankIcons.Shield),
+                        Triple("more", "전체", BankIcons.More)
+                    )
+                    Row(Modifier.fillMaxWidth().background(TraceColors.SurfaceRaised)) {
                         tabs.forEach { (destination, label, icon) ->
                             val selected = destination == route
-                            Column(Modifier.weight(1f).heightIn(min = 64.dp)
-                                .clickable(role = Role.Tab) {
-                                    nav.navigate(destination) {
-                                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                                        launchSingleTop = true; restoreState = true
+                            Column(
+                                Modifier.weight(1f).heightIn(min = 64.dp)
+                                    .clickable(role = Role.Tab) {
+                                        nav.navigate(destination) {
+                                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                                            launchSingleTop = true
+                                            restoreState = true
+                                        }
                                     }
-                                }.testTag("nav_$destination").semantics { this.selected = selected; contentDescription = label }
-                                .padding(vertical = 9.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Icon(icon, null, Modifier.size(23.dp), tint = if (selected) TraceColors.Ink else TraceColors.Muted)
-                                Text(label, style = MaterialTheme.typography.labelSmall, color = if (selected) TraceColors.Ink else TraceColors.Muted,
-                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, textAlign = TextAlign.Center)
+                                    .testTag("nav_$destination")
+                                    .semantics { this.selected = selected; contentDescription = label },
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Box(Modifier.height(3.dp).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                                    if (selected) Box(Modifier.width(22.dp).height(2.dp).background(TraceColors.Coral))
+                                }
+                                Spacer(Modifier.height(7.dp))
+                                Icon(icon, null, Modifier.size(21.dp), tint = if (selected) TraceColors.Ink else TraceColors.Muted)
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (selected) TraceColors.Ink else TraceColors.Muted,
+                                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    textAlign = TextAlign.Center
+                                )
                             }
                         }
                     }

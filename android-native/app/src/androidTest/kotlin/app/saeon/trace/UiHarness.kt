@@ -6,6 +6,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.IntSize
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
@@ -148,7 +149,7 @@ abstract class UiHarness {
                 val result = mutableListOf<TextLayoutResult>()
                 node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(result)
                 result.forEach { text ->
-                    val metric = textOverflow(text)
+                    val metric = textOverflow(text, node.size)
                     if (text.hasVisualOverflow || metric.omitted) metrics +=
                         "node=${node.id} layout=${text.size} reconstructedParagraph=${text.multiParagraph.width}x${text.multiParagraph.height} occupiedWidth=${metric.occupiedWidth} dx=${metric.dx} dy=${metric.dy} omitted=${metric.omitted} text=${text.layoutInput.text}"
                     if (metric.exceedsBounds) issues +=
@@ -171,7 +172,7 @@ abstract class UiHarness {
 internal data class TextOverflowMetric(val occupiedWidth: Float, val dx: Float, val dy: Float, val omitted: Boolean) {
     val exceedsBounds: Boolean get() = dx > 1f || dy > 1f || omitted
 }
-internal fun textOverflow(text: TextLayoutResult): TextOverflowMetric {
+internal fun textOverflow(text: TextLayoutResult, renderedSize: IntSize = text.size): TextOverflowMetric {
     val occupied = (0 until text.lineCount).maxOfOrNull { text.getLineRight(it) - text.getLineLeft(it) } ?: 0f
     val bottom = (0 until text.lineCount).maxOfOrNull { text.getLineBottom(it) } ?: 0f
     val explicitLines = text.layoutInput.text.text.count { it == '\n' } + 1
@@ -179,5 +180,6 @@ internal fun textOverflow(text: TextLayoutResult): TextOverflowMetric {
     val omitted = text.multiParagraph.didExceedMaxLines ||
         (0 until text.lineCount).any { text.isLineEllipsized(it) } ||
         hardBreakTruncated
-    return TextOverflowMetric(occupied, occupied - text.size.width, maxOf(bottom, text.multiParagraph.height) - text.size.height, omitted)
+    val effectiveHeight = minOf(text.size.height, renderedSize.height)
+    return TextOverflowMetric(occupied, occupied - text.size.width, maxOf(bottom, text.multiParagraph.height) - effectiveHeight, omitted)
 }

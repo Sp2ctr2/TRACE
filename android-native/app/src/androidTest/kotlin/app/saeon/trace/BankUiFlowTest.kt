@@ -138,4 +138,13 @@ class BankUiFlowTest : UiHarness() {
         assertTrue(state.receipts.none { !it.seed })
         assertNull(state.current!!.authorization)
     }
+    @Test fun physicalBackDismissesAuthenticationWithoutSending() {
+        fresh(); createReview(DemoScenario.NORMAL)
+        tap("transfer_confirm"); waitScreen("auth_confirm")
+        device.pressBack()
+        compose.waitUntil(10_000) { state.current?.stage == TransferStage.REVIEW }
+        compose.onAllNodesWithTag("auth_confirm").assertCountEquals(0)
+        assertEquals(Fixtures.START_BALANCE, state.balance)
+        assertTrue(state.receipts.none { !it.seed })
+    }
 }

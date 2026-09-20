@@ -8,6 +8,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -47,6 +48,7 @@ class MainActivity : FragmentActivity() {
         receiveSharedText(intent)
         setContent {
             val preferences by model.preferences.collectAsStateWithLifecycle()
+            val transactionInteraction by model.interaction.collectAsStateWithLifecycle()
             SaeonTheme(preferences.easyMode) {
                 SaeonApp(model, safetyModel, onNavigationReady = { controller ->
                     if (navigation !== controller) {
@@ -65,16 +67,27 @@ class MainActivity : FragmentActivity() {
                         microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
                     },
                     onStopVoice = ::stopVoice, voiceActive = voiceActive)
+                // Dialog windows consume physical Back themselves. Also handle an
+                // activity-dispatched Back without navigating behind an auth sheet.
+                BackHandler(enabled = transactionInteraction.authChallenge != null) { model.cancelAuthorization() }
             }
         }
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); receiveSharedText(intent) }
     private fun receiveSharedText(incoming: Intent?) {
-        if (incoming?.action != Intent.ACTION_SEND || incoming.type != "text/plain") return
+        if (incoming?.action != Intent.ACTION_SEND || incoming.type != "text/plain" ||
+            incoming.getBooleanExtra("app.saeon.trace.SHARE_CONSUMED", false)) return
         val text = incoming.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
-        incoming.removeExtra(Intent.EXTRA_TEXT)
-        incoming.clipData = null
-        intent = Intent(this, MainActivity::class.java)
+        incoming.putExtra("app.saeon.trace.SHARE_CONSUMED", true)
+        // Keep the original launch action/categories/type. Replacing getIntent()
+        // with a blank Intent breaks lifecycle identity and cold-share restoration.
+        // Only the explicitly ingested payload and optional raw attachments go away.
+        listOfNotNull(incoming, intent).forEach { payload ->
+            payload.removeExtra(Intent.EXTRA_TEXT)
+            payload.removeExtra(Intent.EXTRA_HTML_TEXT)
+            payload.removeExtra(Intent.EXTRA_STREAM)
+            payload.clipData = null
+        }
         stopVoice()
         safetyModel.receive(text)
     }

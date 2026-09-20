@@ -11,6 +11,7 @@ import androidx.test.uiautomator.UiDevice
 import app.saeon.trace.core.*
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
+import org.junit.After
 import org.junit.Rule
 import org.junit.rules.TestWatcher
 import org.junit.runner.Description
@@ -18,6 +19,10 @@ import java.io.File
 
 abstract class UiHarness {
     @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    private val layoutFailures = mutableListOf<String>()
+    @After fun assertCapturedLayouts() {
+        assertTrue("Captured layout defects:\n${layoutFailures.joinToString("\n")}", layoutFailures.isEmpty())
+    }
     val instrumentation get() = InstrumentationRegistry.getInstrumentation()
     val context get() = instrumentation.targetContext
     val graph get() = (context.applicationContext as SaeonApplication).graph
@@ -112,6 +117,7 @@ abstract class UiHarness {
     private fun auditLayout(nodes: List<SemanticsNode>, name: String) {
         val minTarget = 48f * context.resources.displayMetrics.density - 1.5f
         val issues = mutableListOf<String>()
+        val metrics = mutableListOf<String>()
         nodes.forEach { node ->
             val visible = node.boundsInRoot.width > 0 && node.boundsInRoot.height > 0
             // A clipped scroll viewport is not the logical size of a touch target.
@@ -124,10 +130,25 @@ abstract class UiHarness {
             if (visible) {
                 val result = mutableListOf<TextLayoutResult>()
                 node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(result)
-                result.filter { it.hasVisualOverflow }.forEach { issues += "Text overflow ${node.id}: ${it.layoutInput.text}" }
+                result.forEach { text ->
+                    val dx = text.multiParagraph.width - text.size.width
+                    val dy = text.multiParagraph.height - text.size.height
+                    val omitted = text.multiParagraph.didExceedMaxLines ||
+                        (0 until text.lineCount).any { text.isLineEllipsized(it) }
+                    // Paragraph uses floating pixel extents; layout size is integer.
+                    // Record the exact deltas. Ignore at most one physical pixel of
+                    // rounding, never missing lines, ellipsis or actual overflows.
+                    if (text.hasVisualOverflow || omitted) metrics +=
+                        "node=${node.id} layout=${text.size} paragraph=${text.multiParagraph.width}x${text.multiParagraph.height} dx=$dx dy=$dy omitted=$omitted text=${text.layoutInput.text}"
+                    if (dx > 1f || dy > 1f || omitted) issues +=
+                        "Text overflow ${node.id}: dx=$dx dy=$dy omitted=$omitted: ${text.layoutInput.text}"
+                }
             }
         }
-        File(output, "$name.audit.txt").writeText(if (issues.isEmpty()) "PASS: visible text layout and 48dp interactive bounds\n" else issues.joinToString("\n"))
-        assertTrue("$name layout audit:\n${issues.joinToString("\n")}", issues.isEmpty())
+        File(output, "$name.text-metrics.txt").writeText(metrics.joinToString("\n") + "\n")
+        File(output, "$name.audit.txt").writeText(if (issues.isEmpty()) "PASS: visible text layout (one physical pixel rounding tolerance; no omitted lines) and 48dp interactive bounds\n" else issues.joinToString("\n"))
+        if (issues.isNotEmpty()) layoutFailures += "$name layout audit:\n${issues.joinToString("\n")}"
+        // Soft-collect visual failures so the remaining real screens are still
+        // captured. @After fails the test; the evidence parser also rejects them.
     }
 }

@@ -2,6 +2,7 @@ package app.saeon.trace
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.os.SystemClock
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -107,12 +108,40 @@ abstract class UiHarness {
     }
     fun capture(name: String, audit: Boolean = true) {
         compose.waitForIdle()
-        val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot()) { "Emulator screenshot unavailable" }
+        instrumentation.waitForIdleSync()
+        device.waitForIdle(1_000)
+        SystemClock.sleep(250)
+        val bitmap = stableScreenshot()
+        File(output, "$name.frame.txt").writeText("route=${compose.activity.navigation?.currentDestination?.route}\nwidth=${bitmap.width}\nheight=${bitmap.height}\n")
         File(output, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
         val nodes = compose.onAllNodes(SemanticsMatcher("all nodes") { true }, useUnmergedTree = true).fetchSemanticsNodes()
         File(output, "$name.semantics.txt").writeText(nodes.joinToString("\n\n") { "${it.id} clipped=${it.boundsInRoot} layout=${it.size}\n${it.config}" })
         if (audit) auditLayout(nodes, name)
+    }
+    private fun stableScreenshot(): Bitmap {
+        var previous = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+        repeat(25) {
+            SystemClock.sleep(80)
+            val next = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            val stable = previous.sameAs(next)
+            previous.recycle()
+            if (stable) return next
+            previous = next
+        }
+        previous.recycle()
+        throw AssertionError("Native display did not settle; no golden screenshot accepted")
+    }
+    fun assertSingleLine(tag: String) {
+        val node = compose.onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode()
+        val layouts = mutableListOf<TextLayoutResult>()
+        node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(layouts)
+        assertTrue("Text measurement is missing for $tag", layouts.isNotEmpty())
+        layouts.forEach {
+            val actual = TextBoundsAudit.withinDrawnBounds(it)
+            assertEquals("Label or amount was split: $tag / ${it.layoutInput.text}", 1, actual.lineCount)
+            assertFalse("Label or amount was clipped: $tag", actual.hasVisualOverflow)
+        }
     }
     private fun auditLayout(nodes: List<SemanticsNode>, name: String) {
         val minTarget = 48f * context.resources.displayMetrics.density - 1.5f

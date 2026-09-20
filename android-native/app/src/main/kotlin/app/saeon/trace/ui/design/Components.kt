@@ -301,7 +301,7 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
 }
 
 @Composable fun EditorialPanel(modifier: Modifier = Modifier, accent: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
-    Row(modifier.fillMaxWidth()) {
+    Row(modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
         Box(Modifier.width(2.dp).fillMaxHeight().background(if (accent) TraceColors.Coral else TraceColors.DividerStrong))
         Column(Modifier.weight(1f).padding(start = 16.dp, top = 2.dp, bottom = 2.dp), content = content)
     }

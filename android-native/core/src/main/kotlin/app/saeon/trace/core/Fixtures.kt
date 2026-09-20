@@ -38,10 +38,12 @@ object Fixtures {
         DemoScenario.WARN -> "보낸 링크에서 주문을 확인하고 이 계좌로 입금해 주세요."
     }
     fun events(scenario: DemoScenario, now: Long): List<RiskEvent> {
-        val target = recipient(scenario).id
+        // These requests precede payee entry. Changing the destination must not
+        // erase active pressure. Explicitly payee-scoped events remain supported
+        // by RiskContext, but these fixtures describe session-wide requests.
         fun e(type: RiskType, minutesAgo: Int, summary: String) = RiskEvent(
             "fixture-${scenario.name}-${type.name}-$now", type, now - minutesAgo * 60_000L,
-            now + EVENT_TTL, RiskSource.DEMO_FIXTURE, summary, target
+            now + EVENT_TTL, RiskSource.DEMO_FIXTURE, summary, recipientId = null
         )
         return when (scenario) {
             DemoScenario.NORMAL -> emptyList()

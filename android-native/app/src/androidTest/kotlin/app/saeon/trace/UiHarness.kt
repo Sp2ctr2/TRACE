@@ -34,6 +34,7 @@ abstract class UiHarness {
     fun awaitReady() {
         compose.waitUntil(15_000) { repository.state.value != null && compose.activity.navigation != null }
         compose.waitForIdle()
+        DeviceWindowGuard.clearKnownLauncherDialog(output)
     }
     fun fresh(scenario: DemoScenario = DemoScenario.NORMAL) {
         awaitReady()
@@ -61,11 +62,13 @@ abstract class UiHarness {
         compose.waitForIdle()
     }
     fun tap(tag: String, scroll: Boolean = false) {
+        DeviceWindowGuard.clearKnownLauncherDialog(output)
         waitScreen(tag)
         val node = compose.onNodeWithTag(tag)
         if (scroll) node.performScrollTo()
         node.performClick()
         compose.waitForIdle()
+        DeviceWindowGuard.clearKnownLauncherDialog(output)
     }
     fun createReview(scenario: DemoScenario) {
         runBlocking {
@@ -102,6 +105,10 @@ abstract class UiHarness {
     }
     fun capture(name: String, audit: Boolean = true) {
         compose.waitForIdle()
+        if (audit) {
+            DeviceWindowGuard.clearKnownLauncherDialog(output)
+            DeviceWindowGuard.assertNoCrashDialog()
+        }
         val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot()) { "Emulator screenshot unavailable" }
         File(output, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
@@ -111,6 +118,7 @@ abstract class UiHarness {
     }
     private fun auditLayout(nodes: List<SemanticsNode>, name: String) {
         val minTarget = 48f * context.resources.displayMetrics.density - 1.5f
+        val tolerancePx = 1.5f
         val issues = mutableListOf<String>()
         val geometry = mutableListOf<String>()
         nodes.forEach { node ->
@@ -122,19 +130,34 @@ abstract class UiHarness {
                     issues += "Touch target ${node.id}: layout=$logical touch=$actual\n${node.config}"
             }
             if (visible) {
-                val result = mutableListOf<TextLayoutResult>()
-                node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(result)
-                result.forEach { layout ->
+                val results = mutableListOf<TextLayoutResult>()
+                node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(results)
+                results.forEach { layout ->
                     val lineBounds = (0 until layout.lineCount).joinToString(" | ") { line ->
                         listOf(layout.getLineLeft(line), layout.getLineRight(line), layout.getLineTop(line), layout.getLineBottom(line)).joinToString(",")
                     }
-                    geometry += "node=${node.id}; logical=${node.size}; result=${layout.size}; paragraph=${layout.multiParagraph.width}x${layout.multiParagraph.height}; lines=${layout.lineCount}; maxLines=${layout.multiParagraph.didExceedMaxLines}; horizontal=${layout.didOverflowWidth}; vertical=${layout.didOverflowHeight}; lineBounds=$lineBounds; text=${layout.layoutInput.text.text.take(80)}"
-                    if (layout.hasVisualOverflow) issues += "Text overflow ${node.id}: ${layout.layoutInput.text}"
+                    val renderedWidth = (0 until layout.lineCount).maxOfOrNull { line ->
+                        layout.getLineRight(line) - layout.getLineLeft(line)
+                    } ?: 0f
+                    val editable = node.config.contains(SemanticsActions.SetText)
+                    // Compose's simple-text semantics can reconstruct a paragraph
+                    // using the parent's maximum width, while the actual Text node
+                    // is intrinsic-sized. Unused paragraph capacity is NOT clipping.
+                    // Compare rendered line spans with the logical node instead.
+                    val widthOverflow = renderedWidth > node.size.width + tolerancePx
+                    val heightOverflow = layout.multiParagraph.height > node.size.height + tolerancePx
+                    val truncated = layout.multiParagraph.didExceedMaxLines ||
+                        (0 until layout.lineCount).any { layout.isLineEllipsized(it) }
+                    geometry += "node=${node.id}; logical=${node.size}; result=${layout.size}; paragraph=${layout.multiParagraph.width}x${layout.multiParagraph.height}; renderedWidth=$renderedWidth; lines=${layout.lineCount}; rawOverflow=${layout.hasVisualOverflow}; widthOverflow=$widthOverflow; heightOverflow=$heightOverflow; truncated=$truncated; editable=$editable; lineBounds=$lineBounds; text=${layout.layoutInput.text.text.take(80)}"
+                    // Editable fields intentionally scroll. Their value and IME
+                    // reachability are exercised in separate interaction tests.
+                    if (!editable && (widthOverflow || heightOverflow || truncated))
+                        issues += "Text clipping ${node.id}: logical=${node.size}; renderedWidth=$renderedWidth; height=${layout.multiParagraph.height}; truncated=$truncated; text=${layout.layoutInput.text}"
                 }
             }
         }
         File(output, "$name.text-geometry.txt").writeText(geometry.joinToString("\n"))
-        File(output, "$name.audit.txt").writeText(if (issues.isEmpty()) "PASS: visible text layout and 48dp interactive bounds\n" else issues.joinToString("\n"))
+        File(output, "$name.audit.txt").writeText(if (issues.isEmpty()) "PASS: rendered non-editable text and logical 48dp interactive bounds\n" else issues.joinToString("\n"))
         assertTrue("$name layout audit:\n${issues.joinToString("\n")}", issues.isEmpty())
     }
 }

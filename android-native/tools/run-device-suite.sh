@@ -7,6 +7,8 @@ mkdir -p verification/logs verification/apk
 collect() {
   adb pull "/sdcard/Android/data/$PACKAGE/files/verification" verification/screens >/dev/null 2>&1 || true
   adb logcat -b crash -d > verification/logs/crash-buffer.txt 2>/dev/null || true
+  adb logcat -b events -d > verification/logs/system-events.txt 2>/dev/null || true
+  adb shell dumpsys window > verification/logs/final-window.txt 2>/dev/null || true
   adb shell dumpsys gfxinfo "$PACKAGE" framestats > verification/logs/frame-stats.txt 2>/dev/null || true
   adb shell dumpsys accessibility > verification/logs/accessibility-services.txt 2>/dev/null || true
   adb shell settings get system font_scale > verification/logs/font-scale-final.txt 2>/dev/null || true
@@ -32,6 +34,11 @@ adb install -r -t app/build/outputs/apk/debug/app-debug.apk
 adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell pm clear "$PACKAGE"
 adb shell am start -W -n "$PACKAGE/app.saeon.trace.MainActivity" | tee verification/logs/cold-start.txt
+# The Google APIs image's unrelated Pixel Launcher previously left an ANR
+# above our Activity. Stop that background process, without suppressing any
+# application ANRs. The harness separately records any recurrence and refuses
+# to accept an obscured golden screenshot.
+adb shell am force-stop com.google.android.apps.nexuslauncher
 adb shell getprop ro.build.fingerprint > verification/logs/device-fingerprint.txt
 adb shell getprop ro.build.version.sdk > verification/logs/api-level.txt
 adb shell wm size > verification/logs/baseline-size.txt
@@ -43,7 +50,7 @@ run_test() {
   grep -Eq '^OK \([0-9]+ tests?\)' "verification/logs/$name.txt"
   ! grep -q 'FAILURES!!!' "verification/logs/$name.txt"
 }
-SUITE=app.saeon.trace.RepositoryDeviceTest,app.saeon.trace.BankUiFlowTest,app.saeon.trace.GoldenScreensTest
+SUITE=app.saeon.trace.RepositoryDeviceTest,app.saeon.trace.BankUiFlowTest,app.saeon.trace.ContextSafetyDeviceTest,app.saeon.trace.SharedLaunchTest,app.saeon.trace.GoldenScreensTest
 for pass in pass-1 pass-2; do
   run_test "$pass" "$SUITE"
   run_test "$pass-seed" app.saeon.trace.SeedHoldProcessTest
@@ -71,5 +78,17 @@ adb shell wm size 786x1746
 adb shell cmd uimode night yes
 run_test dark-system-forced-light app.saeon.trace.LayoutMatrixTest
 adb shell cmd uimode night no
+# The release variant is optimized but signed with the same development key.
+# Verify installation and a real cold launch as a separate smoke test.
+RELEASE='../artifact-input/delivery/saeon-trace-release-demo.apk'
+if [[ -f "$RELEASE" ]]; then
+  adb shell am force-stop "$PACKAGE"
+  adb install -r "$RELEASE" | tee verification/logs/release-install.txt
+  adb shell am start -W -n "$PACKAGE/app.saeon.trace.MainActivity" | tee verification/logs/release-cold-start.txt
+  grep -q 'Status: ok' verification/logs/release-cold-start.txt
+  adb shell pidof "$PACKAGE" > verification/logs/release-pid.txt
+  adb shell dumpsys package "$PACKAGE" > verification/logs/release-package.txt
+  adb exec-out screencap -p > verification/release-smoke.png
+fi
 collect
 python3 tools/summarize-verification.py

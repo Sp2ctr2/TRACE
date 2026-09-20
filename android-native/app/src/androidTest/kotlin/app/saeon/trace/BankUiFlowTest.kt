@@ -87,7 +87,8 @@ class BankUiFlowTest : UiHarness() {
     @Test fun cancellingAuthenticationNeverSends() {
         fresh(); createReview(DemoScenario.NORMAL)
         tap("transfer_confirm"); waitScreen("auth_confirm")
-        compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+        // System back targets the focused modal window, not the Activity behind it.
+        device.pressBack()
         compose.waitUntil(10_000) { state.current?.stage == TransferStage.REVIEW }
         assertEquals(Fixtures.START_BALANCE, state.balance)
         assertTrue(state.receipts.none { !it.seed })

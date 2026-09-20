@@ -58,11 +58,14 @@ class MainActivity : FragmentActivity() {
     }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); receiveSharedText(intent) }
     private fun receiveSharedText(incoming: Intent?) {
-        if (incoming?.action != Intent.ACTION_SEND || incoming.type != "text/plain") return
+        if (incoming?.action != Intent.ACTION_SEND || incoming.type != "text/plain" ||
+            incoming.getBooleanExtra("app.saeon.trace.SHARE_CONSUMED", false)) return
         val text = incoming.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
         incoming.removeExtra(Intent.EXTRA_TEXT)
         incoming.clipData = null
-        intent = Intent(this, MainActivity::class.java)
+        // Preserve the launch identity used by task and lifecycle matching.
+        // Remove the payload without changing action, type or categories.
+        incoming.putExtra("app.saeon.trace.SHARE_CONSUMED", true)
         safetyModel.receive(text)
     }
     private fun authenticate(challenge: AuthorizationChallenge) {

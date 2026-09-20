@@ -22,8 +22,7 @@ class BankRepository(
     private var observer: Job? = null
     private var publishedRevision = -1L
     @Synchronized private fun publish(state: BankState, revision: Long) {
-        // Room invalidation and the write result can arrive on different dispatchers.
-        // Never let a delayed observer roll the visible ledger back to an older revision.
+        // A delayed Room observer must not roll the visible ledger backwards.
         if (revision >= publishedRevision) {
             publishedRevision = revision
             _state.value = state
@@ -84,6 +83,8 @@ class BankRepository(
         }
     }
     suspend fun setDraft(draft: TransferDraft) = change { state, _ -> state.copy(draft = draft) }
+    // Atomically bind the submitted draft, not a separately saved intermediate value.
+    suspend fun review(draft: TransferDraft): BankState = change { state, now -> BankEngine.review(state, draft, now) }
     suspend fun reviewDraft(): BankState = change { state, now ->
         val draft = state.draft ?: throw BankFailure("RECIPIENT_MISSING", "받는 분을 먼저 선택해 주세요. 아직 돈은 나가지 않았습니다.")
         BankEngine.review(state, draft, now)
@@ -105,8 +106,7 @@ class BankRepository(
     suspend fun acknowledge(id: String) = change { state, now -> BankEngine.acknowledgeWarning(state, id, now) }
     suspend fun resolveRoute(id: String) = change { state, now ->
         val record = state.record(id)
-        // An explicitly requested refresh discards the old route before querying.
-        // Refreshing cannot create a new intent, authorization, receipt or debit.
+        // Explicit refresh discards the old route; it never creates an approval or debit.
         val pending = if (record.stage == TransferStage.ROUTE) state.withRecord(record.copy(stage = TransferStage.VERIFY, route = null)) else state
         gateway.resolve(pending, id, now)
     }

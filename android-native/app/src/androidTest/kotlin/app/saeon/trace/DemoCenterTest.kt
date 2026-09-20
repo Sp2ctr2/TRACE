@@ -1,9 +1,13 @@
 package app.saeon.trace
 
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.*
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.saeon.trace.core.*
 import app.saeon.trace.data.ReadingMode
+import app.saeon.trace.ui.design.BankFont
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -56,5 +60,43 @@ class DemoCenterTest : UiHarness() {
             compose.waitUntil(10_000) { compose.activity.model.preferences.value.readingMode == mode }
             assertEquals(before, state)
         }
+    }
+    @Test fun inlineDemoModeIsAReadingPreferenceNotATransferApproval() {
+        evaluated(DemoScenario.IMPERSONATION)
+        val before = state
+        navigate("demo_center"); tap("demo_mode_CHILD", scroll = true)
+        compose.waitUntil(10_000) { compose.activity.model.preferences.value.childMode }
+        assertEquals(before, state)
+        assertEquals(TransferStage.HOLD, state.current!!.stage)
+        tap("demo_NORMAL", scroll = true)
+        assertEquals(before, state)
+        device.pressBack(); waitScreen("demo_center")
+        assertEquals(before, state)
+    }
+    @Test fun neverSentFixtureIsLabelledAsEnteredAccountNotRecentPayment() {
+        fresh(DemoScenario.IMPERSONATION); navigate("transfer")
+        compose.onNodeWithText("입력한 계좌").assertExists()
+        compose.onNodeWithTag("recipient_kim").assertExists()
+        assertTrue(state.receipts.none { it.recipient.id == Fixtures.kim.id })
+        assertEquals(Fixtures.START_BALANCE, state.balance)
+    }
+    @Test fun homeUsesTheBundledWebsiteTypeface() {
+        fresh()
+        val node = compose.onNodeWithText("새온은행", useUnmergedTree = true).fetchSemanticsNode()
+        val result = mutableListOf<TextLayoutResult>()
+        node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(result)
+        assertTrue(result.isNotEmpty())
+        assertEquals(BankFont, result.first().layoutInput.style.fontFamily)
+        val resource = context.resources.openRawResource(R.font.pretendard_regular).use { it.readBytes() }
+        assertTrue("Offline font resource must be bundled", resource.size > 1_000_000)
+    }
+    @Test fun hiddenHomeBalanceDoesNotLeakIntoVisibleMoneyDescriptions() {
+        fresh(); runBlocking { graph.preferences.hideBalance(true) }
+        compose.waitUntil(10_000) { compose.activity.model.preferences.value.hideBalance }
+        compose.waitForIdle()
+        compose.onNodeWithText("잔액 숨김").assertExists()
+        compose.onAllNodesWithText("12,840,000", substring = true).assertCountEquals(0)
+        compose.onAllNodesWithContentDescription("12,840,000원").assertCountEquals(0)
+        assertEquals(Fixtures.START_BALANCE, state.balance)
     }
 }

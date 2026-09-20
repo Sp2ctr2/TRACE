@@ -6,6 +6,14 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val typographyResources = layout.buildDirectory.dir("generated/traceTypography/res")
+val prepareTypography by tasks.registering(Exec::class) {
+    inputs.file(rootProject.file("tools/prepare-fonts.py"))
+    outputs.dir(typographyResources)
+    commandLine(providers.gradleProperty("python").getOrElse("python3"),
+        rootProject.file("tools/prepare-fonts.py").absolutePath, typographyResources.get().asFile.absolutePath)
+}
+
 android {
     namespace = "app.saeon.trace"
     compileSdk = 35
@@ -13,11 +21,12 @@ android {
         applicationId = "app.saeon.trace.demo"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
+        versionCode = 4
         versionName = "1.1.0-demo"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
     }
+    sourceSets.getByName("main").res.srcDir(typographyResources)
     buildFeatures { compose = true; buildConfig = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -29,7 +38,6 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            // This is an offline demonstration signing identity, not a store release key.
             signingConfig = signingConfigs.getByName("debug")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
@@ -38,8 +46,7 @@ android {
     lint { abortOnError = true; checkReleaseBuilds = true }
     testOptions { animationsDisabled = true }
 }
-// The Room plugin isolates processor outputs per variant before copying schemas.
-// A shared KSP arg let parallel debug/release compilers read partially written JSON.
+tasks.named("preBuild").configure { dependsOn(prepareTypography) }
 room { schemaDirectory("$projectDir/schemas") }
 
 dependencies {

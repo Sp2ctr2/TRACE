@@ -61,17 +61,17 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
 }
 @Composable fun IconAction(icon: ImageVector, label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     IconButton(onClick, modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp).semantics { contentDescription = label }) {
-        Icon(icon, null, Modifier.size(22.dp), tint = TraceColors.Ink)
+        Icon(icon, null, Modifier.size(21.dp), tint = TraceColors.Ink)
     }
 }
 @Composable fun TraceSignature(label: String = "trace") {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        Icon(BankIcons.Trace, null, Modifier.size(27.dp), tint = TraceColors.Coral)
-        Text(label, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = TraceColors.Ink)
+        Icon(BankIcons.Trace, null, Modifier.size(21.dp), tint = TraceColors.Coral)
+        Text(label, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = TraceColors.Ink)
     }
 }
 @Composable fun SaeonWordmark(modifier: Modifier = Modifier) {
-    Text("새온은행", modifier, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    Text("새온은행", modifier, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
 }
 @Composable fun Page(title: String = "", tag: String = "", back: (() -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null, footer: (@Composable ColumnScope.() -> Unit)? = null,
@@ -83,7 +83,7 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
         Column(Modifier.widthIn(max = 620.dp).fillMaxSize().then(if (compact) Modifier.verticalScroll(pageScroll) else Modifier)) {
             if (title.isNotEmpty() || back != null || actions != null) {
                 Row(Modifier.fillMaxWidth().padding(horizontal = if (back != null) 8.dp else 24.dp)
-                    .heightIn(min = 58.dp), verticalAlignment = Alignment.CenterVertically) {
+                    .heightIn(min = 54.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (back != null) IconAction(BankIcons.Back, "이전 화면", onClick = back)
                     if (back == null && title == "새온은행") SaeonWordmark(Modifier.weight(1f))
                     else Text(title, Modifier.weight(1f).padding(vertical = 10.dp).semantics { heading() },
@@ -92,15 +92,15 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
                 }
             }
             val bodyModifier = if (compact) Modifier else Modifier.weight(1f).verticalScroll(bodyScroll)
-            Column(bodyModifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 10.dp, bottom = 24.dp), content = content)
+            Column(bodyModifier.fillMaxWidth().padding(horizontal = 24.dp).padding(top = 8.dp, bottom = 24.dp), content = content)
             if (footer != null) Column(Modifier.fillMaxWidth().background(TraceColors.Surface).padding(horizontal = 24.dp)
                 .padding(top = 8.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(2.dp), content = footer)
         }
     }
 }
 @Composable fun PrimaryButton(text: String, modifier: Modifier = Modifier, enabled: Boolean = true, accent: Boolean = false, onClick: () -> Unit) {
-    Button(onClick, modifier.fillMaxWidth().heightIn(min = if (LocalEasyMode.current) 60.dp else 56.dp), enabled = enabled,
-        shape = RoundedCornerShape(10.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+    Button(onClick, modifier.fillMaxWidth().heightIn(min = if (LocalEasyMode.current) 60.dp else 54.dp), enabled = enabled,
+        shape = RoundedCornerShape(11.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 15.dp),
         colors = ButtonDefaults.buttonColors(containerColor = TraceColors.Deep, contentColor = TraceColors.White,
             disabledContainerColor = TraceColors.Divider, disabledContentColor = TraceColors.Muted),
         elevation = ButtonDefaults.buttonElevation(0.dp, 0.dp, 0.dp, 0.dp, 0.dp)) {
@@ -129,15 +129,15 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
 @Composable fun Money(value: Long, modifier: Modifier = Modifier, prefix: String = "", hero: Boolean = true) {
     val density = LocalDensity.current
     val measurer = rememberTextMeasurer()
-    val type = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum", lineHeight = if (hero) 48.sp else 36.sp)
+    val type = MaterialTheme.typography.bodyLarge.copy(fontFeatureSettings = "tnum", lineHeight = if (hero) 44.sp else 36.sp)
     BoxWithConstraints(modifier.fillMaxWidth().semantics { contentDescription = "$prefix${won(value)}원" }) {
         val width = with(density) { maxWidth.roundToPx() }
         val number = prefix + won(value)
         val label = remember(number, width, hero, density.density, density.fontScale, type) {
             var chosen = buildAnnotatedString { append(number + "원") }
-            for (size in (if (hero) 38 else 28) downTo 16) {
+            for (size in (if (hero) 36 else 28) downTo 16) {
                 val candidate = buildAnnotatedString {
-                    withStyle(SpanStyle(fontSize = size.sp, fontWeight = FontWeight.Bold)) { append(number) }
+                    withStyle(SpanStyle(fontSize = size.sp, fontWeight = FontWeight.SemiBold)) { append(number) }
                     withStyle(SpanStyle(fontSize = (size * 0.53f).sp, fontWeight = FontWeight.Medium)) { append("원") }
                 }
                 chosen = candidate
@@ -161,7 +161,7 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
 @Composable fun MenuRow(title: String, subtitle: String? = null, icon: ImageVector? = null, tag: String = "", trailing: String? = null, onClick: (() -> Unit)? = null) {
     val large = LocalDensity.current.fontScale >= 1.3f
     Row(Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
-        .testTag(tag).heightIn(min = 64.dp).padding(vertical = 13.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
+        .testTag(tag).heightIn(min = 64.dp).padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(13.dp)) {
         if (icon != null) AppIcon(icon, size = 21, tint = TraceColors.InkSoft)
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
@@ -169,11 +169,11 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
             if (large && trailing != null) { Space(6); Text(trailing, style = MaterialTheme.typography.bodyMedium) }
         }
         if (!large && trailing != null) Text(trailing, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-        if (onClick != null) AppIcon(BankIcons.Chevron, size = 17, tint = TraceColors.Muted)
+        if (onClick != null) AppIcon(BankIcons.Chevron, size = 16, tint = TraceColors.Muted)
     }
 }
-@Composable fun SurfaceBox(modifier: Modifier = Modifier, tint: Color = TraceColors.Surface, content: @Composable ColumnScope.() -> Unit) {
-    Column(modifier.fillMaxWidth().background(tint, RoundedCornerShape(12.dp)).border(1.dp, TraceColors.Divider, RoundedCornerShape(12.dp)).padding(18.dp), content = content)
+@Composable fun SurfaceBox(modifier: Modifier = Modifier, tint: Color = TraceColors.SurfaceRaised, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier.fillMaxWidth().background(tint, RoundedCornerShape(13.dp)).border(1.dp, TraceColors.Divider, RoundedCornerShape(13.dp)).padding(18.dp), content = content)
 }
 @Composable fun EditorialPanel(modifier: Modifier = Modifier, accent: Boolean = false, content: @Composable ColumnScope.() -> Unit) {
     Row(modifier.fillMaxWidth().height(IntrinsicSize.Min)) {

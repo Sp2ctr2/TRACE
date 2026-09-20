@@ -24,7 +24,7 @@ object TraceColors {
     val SoftStrong = Color(0xFFE8E6DE)
     val Ink = Color(0xFF20211F)
     val InkSoft = Color(0xFF43443F)
-    val Muted = Color(0xFF70716A)
+    val Muted = Color(0xFF676960)
     val OriginalMuted = Color(0xFF7D7E77)
     val Divider = Color(0xFFDDDCD5)
     val DividerStrong = Color(0xFFC7C6BE)

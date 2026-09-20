@@ -21,6 +21,7 @@ jobs:
           python trace-studio-native/stabilize.py android-native
           python trace-studio3/make_design.py
           python trace-studio3/apply.py android-native
+          python trace-studio3/fixes.py android-native
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -62,6 +63,7 @@ jobs:
           python trace-studio-native/stabilize.py android-native
           python trace-studio3/make_design.py
           python trace-studio3/apply.py android-native
+          python trace-studio3/fixes.py android-native
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

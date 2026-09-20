@@ -57,7 +57,7 @@ run_test() {
   grep -Eq '^OK \([0-9]+ tests?\)' "verification/logs/$name.txt"
   ! grep -q 'FAILURES!!!' "verification/logs/$name.txt"
 }
-SUITE=app.saeon.trace.RepositoryDeviceTest,app.saeon.trace.BankUiFlowTest,app.saeon.trace.GoldenScreensTest,app.saeon.trace.PrivacyLifecycleTest
+SUITE=app.saeon.trace.RepositoryDeviceTest,app.saeon.trace.BankUiFlowTest,app.saeon.trace.GoldenScreensTest,app.saeon.trace.PrivacyLifecycleTest,app.saeon.trace.TextBoundsAuditTest
 for pass in pass-1 pass-2; do
   run_test "$pass" "$SUITE"
   run_test "$pass-seed" app.saeon.trace.SeedHoldProcessTest

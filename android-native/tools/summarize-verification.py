@@ -8,7 +8,7 @@ import re
 root = Path('verification')
 root.mkdir(exist_ok=True)
 logs = root / 'logs'
-full_classes = ['RepositoryDeviceTest', 'BankUiFlowTest', 'GoldenScreensTest', 'PrivacyLifecycleTest']
+full_classes = ['RepositoryDeviceTest', 'BankUiFlowTest', 'GoldenScreensTest', 'PrivacyLifecycleTest', 'TextBoundsAuditTest']
 test_source = Path('app/src/androidTest/kotlin/app/saeon/trace')
 full_count = sum(len(re.findall(r'@Test\b', (test_source / (name + '.kt')).read_text())) for name in full_classes)
 expected = {}

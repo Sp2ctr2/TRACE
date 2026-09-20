@@ -62,7 +62,7 @@ abstract class UiHarness {
         compose.waitForIdle()
     }
     fun waitScreen(tag: String) {
-        compose.waitUntil(10_000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag(tag).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
         compose.waitForIdle()
     }
     fun tap(tag: String, scroll: Boolean = false) {
@@ -120,7 +120,6 @@ abstract class UiHarness {
         val metrics = mutableListOf<String>()
         nodes.forEach { node ->
             val visible = node.boundsInRoot.width > 0 && node.boundsInRoot.height > 0
-            // A clipped scroll viewport is not the logical size of a touch target.
             if (visible && node.config.contains(SemanticsActions.OnClick)) {
                 val actual = node.touchBoundsInRoot
                 val logical = node.size
@@ -131,24 +130,32 @@ abstract class UiHarness {
                 val result = mutableListOf<TextLayoutResult>()
                 node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(result)
                 result.forEach { text ->
-                    val dx = text.multiParagraph.width - text.size.width
-                    val dy = text.multiParagraph.height - text.size.height
-                    val omitted = text.multiParagraph.didExceedMaxLines ||
-                        (0 until text.lineCount).any { text.isLineEllipsized(it) }
-                    // Paragraph uses floating pixel extents; layout size is integer.
-                    // Record the exact deltas. Ignore at most one physical pixel of
-                    // rounding, never missing lines, ellipsis or actual overflows.
-                    if (text.hasVisualOverflow || omitted) metrics +=
-                        "node=${node.id} layout=${text.size} paragraph=${text.multiParagraph.width}x${text.multiParagraph.height} dx=$dx dy=$dy omitted=$omitted text=${text.layoutInput.text}"
-                    if (dx > 1f || dy > 1f || omitted) issues +=
-                        "Text overflow ${node.id}: dx=$dx dy=$dy omitted=$omitted: ${text.layoutInput.text}"
+                    val metric = textOverflow(text)
+                    if (text.hasVisualOverflow || metric.omitted) metrics +=
+                        "node=${node.id} layout=${text.size} reconstructedParagraph=${text.multiParagraph.width}x${text.multiParagraph.height} occupiedWidth=${metric.occupiedWidth} dx=${metric.dx} dy=${metric.dy} omitted=${metric.omitted} text=${text.layoutInput.text}"
+                    if (metric.exceedsBounds) issues +=
+                        "Text overflow ${node.id}: dx=${metric.dx} dy=${metric.dy} omitted=${metric.omitted}: ${text.layoutInput.text}"
                 }
             }
         }
         File(output, "$name.text-metrics.txt").writeText(metrics.joinToString("\n") + "\n")
-        File(output, "$name.audit.txt").writeText(if (issues.isEmpty()) "PASS: visible text layout (one physical pixel rounding tolerance; no omitted lines) and 48dp interactive bounds\n" else issues.joinToString("\n"))
+        File(output, "$name.audit.txt").writeText(if (issues.isEmpty()) "PASS: visible occupied text lines (one physical pixel rounding tolerance; no omitted lines) and 48dp interactive bounds\n" else issues.joinToString("\n"))
         if (issues.isNotEmpty()) layoutFailures += "$name layout audit:\n${issues.joinToString("\n")}"
-        // Soft-collect visual failures so the remaining real screens are still
-        // captured. @After fails the test; the evidence parser also rejects them.
     }
+}
+
+/** Simple Text semantics reconstructs MultiParagraph at the parent's max width,
+ * but preserves the tight measured layout size. Paragraph.width includes blank
+ * space and is therefore not a glyph-overflow test. Compare occupied line widths
+ * and height; omitted lines and ellipsis always fail. Contract-tested with real
+ * narrow/clipped Android Text nodes in TextBoundsAuditTest.
+ */
+internal data class TextOverflowMetric(val occupiedWidth: Float, val dx: Float, val dy: Float, val omitted: Boolean) {
+    val exceedsBounds: Boolean get() = dx > 1f || dy > 1f || omitted
+}
+internal fun textOverflow(text: TextLayoutResult): TextOverflowMetric {
+    val occupied = (0 until text.lineCount).maxOfOrNull { text.getLineRight(it) - text.getLineLeft(it) } ?: 0f
+    val bottom = (0 until text.lineCount).maxOfOrNull { text.getLineBottom(it) } ?: 0f
+    val omitted = text.multiParagraph.didExceedMaxLines || (0 until text.lineCount).any { text.isLineEllipsized(it) }
+    return TextOverflowMetric(occupied, occupied - text.size.width, maxOf(bottom, text.multiParagraph.height) - text.size.height, omitted)
 }

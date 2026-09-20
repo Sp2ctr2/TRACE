@@ -8,7 +8,7 @@ on:
       build_run:
         description: 'Run containing the saeon-quality-build artifact'
         required: true
-        default: '35478402786'
+        default: '35479114992'
 permissions:
   contents: read
   actions: read
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: saeon-quality-build
-          run-id: ${{ inputs.build_run || '35478402786' }}
+          run-id: ${{ inputs.build_run || '35479114992' }}
           github-token: ${{ github.token }}
           path: release-input
       - name: Enable KVM

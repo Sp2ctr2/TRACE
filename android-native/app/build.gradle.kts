@@ -3,6 +3,7 @@ plugins {
     kotlin("android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+    id("androidx.room") version "2.7.1"
 }
 android {
     namespace = "app.saeon.trace"
@@ -31,7 +32,9 @@ android {
     testOptions { animationsDisabled = true; unitTests.isIncludeAndroidResources = true }
     lint { abortOnError = true; checkReleaseBuilds = true }
 }
-ksp { arg("room.schemaLocation", "$projectDir/schemas") }
+// The Room plugin gives each KSP task isolated output and merges schemas only
+// after compilation. A shared raw schemaLocation races debug/release workers.
+room { schemaDirectory("$projectDir/schemas") }
 dependencies {
     implementation(project(":core"))
     val composeBom = platform("androidx.compose:compose-bom:2025.04.01")

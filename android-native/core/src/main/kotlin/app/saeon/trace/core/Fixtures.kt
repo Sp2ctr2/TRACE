@@ -39,10 +39,13 @@ object Fixtures {
     }
     fun events(scenario: DemoScenario, now: Long): List<RiskEvent> {
         val target = recipient(scenario).id
-        fun e(type: RiskType, minutesAgo: Int, summary: String) = RiskEvent(
-            "fixture-${scenario.name}-${type.name}-$now", type, now - minutesAgo * 60_000L,
-            now + EVENT_TTL, RiskSource.DEMO_FIXTURE, summary, target
-        )
+        fun e(type: RiskType, minutesAgo: Int, summary: String): RiskEvent {
+            val createdAt = now - minutesAgo * 60_000L
+            return RiskEvent(
+                "fixture-${scenario.name}-${type.name}-$now", type, createdAt,
+                createdAt + EVENT_TTL, RiskSource.DEMO_FIXTURE, summary, target
+            )
+        }
         return when (scenario) {
             DemoScenario.NORMAL -> emptyList()
             DemoScenario.IMPERSONATION, DemoScenario.EASY -> listOf(

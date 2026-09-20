@@ -180,6 +180,15 @@ class BankEngineTest {
         val state = reviewed(DemoScenario.IMPERSONATION)
         assertEquals(PolicyDecision.ALLOW, BankPolicy.evaluate(state.current!!, state.context, now + Fixtures.EVENT_TTL + 1).decision)
     }
+    @Test fun fixtureRiskSignalsUseOccurrenceBasedFifteenMinuteTtl() {
+        listOf(DemoScenario.IMPERSONATION, DemoScenario.LOAN, DemoScenario.UNKNOWN, DemoScenario.WARN, DemoScenario.EASY).forEach { scenario ->
+            Fixtures.events(scenario, now).forEach { event ->
+                assertEquals(Fixtures.EVENT_TTL, event.expiresAt - event.createdAt)
+                assertTrue(event.active(now))
+                assertFalse(event.active(event.expiresAt))
+            }
+        }
+    }
     @Test fun futureEventsAreNotActive() {
         val state = reviewed(DemoScenario.IMPERSONATION)
         val context = RiskContext(state.events.map { it.copy(createdAt = now + 60_000) })

@@ -32,11 +32,13 @@ import app.saeon.trace.ui.design.*
     val favorites = state.recipients.filter { it.id in preferences.favoriteIds && recent.none { r -> r.id == it.id } }
     val matches = state.recipients.filter { query.isBlank() || it.name.contains(query) || it.account.contains(query) || it.bank.contains(query) }
     Page(title = "송금", tag = "transfer_recipient") {
-        Space(12); Headline("누구에게 보낼까요?"); Space(24)
+        Space(8); MicroLabel("TRANSFER · 1 / 3"); Space(10)
+        Headline("누구에게 보낼까요?")
+        Space(20)
         Field(query, "이름·은행·계좌 검색", { query = it }, Modifier.testTag("recipient_search"))
-        Space(14)
-        MenuRow("계좌번호로 보내기", "새로운 가상 계좌를 확인해요.", BankIcons.Bank, tag = "recipient_account_entry") { open("recipient_entry") }
-        Rule(); Space(22)
+        Space(8)
+        MenuRow("계좌번호로 보내기", "새로운 가상 계좌를 직접 입력해요.", BankIcons.Bank, tag = "recipient_account_entry") { open("recipient_entry") }
+        Space(10); Rule(); Space(16)
         if (query.isNotBlank()) {
             SectionTitle("검색 결과")
             if (matches.isEmpty()) EmptyState("찾는 계좌가 없어요.", "이름이나 계좌 끝자리를 다시 입력해 주세요.")
@@ -45,30 +47,35 @@ import app.saeon.trace.ui.design.*
             SectionTitle("최근 보낸 사람")
             recent.forEach { recipient -> RecipientRow(recipient) { model.startRecipient(recipient) { open("amount") } } }
             if (favorites.isNotEmpty()) {
-                Space(24); Rule(); Space(16); SectionTitle("자주 보내는 사람")
+                Space(20); Rule(); Space(14); SectionTitle("자주 보내는 사람")
                 Column(Modifier.testTag("favorite_recipient_list")) {
                     favorites.forEach { recipient -> RecipientRow(recipient) { model.startRecipient(recipient) { open("amount") } } }
                 }
             }
             val other = state.recipients.filter { candidate -> recent.none { it.id == candidate.id } && favorites.none { it.id == candidate.id } }
             if (other.isNotEmpty()) {
-                Space(24); Rule(); Space(16); SectionTitle("확인한 계좌")
+                Space(20); Rule(); Space(14); SectionTitle("확인한 계좌")
                 other.forEach { recipient -> RecipientRow(recipient) { model.startRecipient(recipient) { open("amount") } } }
             }
         }
-        Space(20); Caption("은행과 수취인은 모두 시연용 가상 데이터입니다.")
+        Space(18); SimulationNote()
     }
 }
 
 @Composable private fun RecipientRow(recipient: Recipient, onClick: () -> Unit) {
-    Row(Modifier.fillMaxWidth().heightIn(min = 82.dp).clickable(role = Role.Button, onClick = onClick)
-        .testTag("recipient_${recipient.id}").padding(vertical = 15.dp),
-        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 74.dp).clickable(role = Role.Button, onClick = onClick)
+            .testTag("recipient_${recipient.id}").padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(13.dp)
+    ) {
+        RecipientGlyph(recipient.name)
         Column(Modifier.weight(1f)) {
-            Text(recipient.name, style = MaterialTheme.typography.titleSmall)
-            Space(5); Caption("${recipient.bank} · ${recipient.account}")
+            Text(recipient.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Space(3); Caption("${recipient.bank} · ${recipient.account}")
         }
-        AppIcon(BankIcons.Chevron, size = 18, tint = TraceColors.Muted)
+        if (!recipient.known) MicroLabel("처음")
+        AppIcon(BankIcons.Chevron, size = 17, tint = TraceColors.Muted)
     }
 }
 
@@ -132,76 +139,119 @@ import app.saeon.trace.ui.design.*
     val valid = error == null && amount > 0
     fun update(value: String) {
         val normalized = value.filter(Char::isDigit).trimStart('0').ifEmpty { "0" }
-        if (normalized.length > 9) { model.showError("입력할 수 있는 금액을 넘었어요. 1억 원 이하로 입력해 주세요. 돈은 나가지 않았습니다."); return }
+        if (normalized.length > 9) {
+            model.showError("입력할 수 있는 금액을 넘었어요. 1억 원 이하로 입력해 주세요. 돈은 나가지 않았습니다.")
+            return
+        }
         digits = normalized
         model.storeDraft(TransferDraft(draft.recipient, normalized.toLongOrNull() ?: 0, purpose))
     }
-    Page(title = "송금 금액", tag = "transfer_amount", back = back, footer = {
+    Page(title = "송금", tag = "transfer_amount", back = back, footer = {
         PrimaryButton("다음", Modifier.testTag("amount_next"), enabled = valid && !interaction.busy) {
             model.review(localDraft) { open("transfer_state") }
         }
     }) {
-        Text("${draft.recipient.name}님에게", style = MaterialTheme.typography.titleMedium)
-        Space(4); Headline("얼마를 보낼까요?"); Space(8)
-        Caption("${draft.recipient.bank} · ${draft.recipient.account}")
-        Space(24)
+        MicroLabel("TRANSFER · 2 / 3"); Space(12)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            RecipientGlyph(draft.recipient.name)
+            Column(Modifier.weight(1f)) {
+                Text("${draft.recipient.name}님에게", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Medium)
+                Space(2); Caption("${draft.recipient.bank} · ${draft.recipient.account}")
+            }
+        }
+        Space(28)
+        Headline("얼마를 보낼까요?")
+        Space(16)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Money(amount, Modifier.weight(1f).testTag("amount_value"))
             IconAction(BankIcons.Edit, "금액 직접 입력", Modifier.testTag("amount_edit")) { directDigits = digits; directInput = true }
         }
-        Space(6); Caption("잔액 ${won(state.balance)}원")
+        Space(6); Caption("보낼 수 있는 금액 ${won(state.balance)}원")
         if (amount > 0 && error != null) ErrorNote(error)
-        Space(16)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Space(14)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(10_000L to "+1만", 100_000L to "+10만", 1_000_000L to "+100만").forEach { (addition, label) ->
-                QuietButton(label, Modifier.weight(1f), enabled = !interaction.busy) { update((amount + addition).toString()) }
+                OutlinedButton(
+                    onClick = { update((amount + addition).toString()) },
+                    enabled = !interaction.busy,
+                    modifier = Modifier.weight(1f).heightIn(min = 44.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, TraceColors.Divider),
+                    contentPadding = PaddingValues(horizontal = 4.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TraceColors.Ink)
+                ) { Text(label, style = MaterialTheme.typography.labelMedium) }
             }
         }
-        Space(10); Rule(); Space(10)
+        Space(14); Rule(); Space(8)
         val rows = listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("clear", "0", "backspace"))
         rows.forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 row.forEach { key ->
                     val label = when (key) { "clear" -> "전체 지우기"; "backspace" -> "한 자리 지우기"; else -> key }
-                    TextButton(onClick = {
-                        when (key) { "clear" -> update("0"); "backspace" -> update(digits.dropLast(1)); else -> update(if (digits == "0") key else digits + key) }
-                    }, enabled = !interaction.busy, modifier = Modifier.weight(1f).heightIn(min = 62.dp).testTag("key_$key")
-                        .semantics { contentDescription = label }, shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(vertical = 10.dp, horizontal = 4.dp),
-                        colors = ButtonDefaults.textButtonColors(contentColor = TraceColors.Ink)) {
+                    TextButton(
+                        onClick = {
+                            when (key) {
+                                "clear" -> update("0")
+                                "backspace" -> update(digits.dropLast(1))
+                                else -> update(if (digits == "0") key else digits + key)
+                            }
+                        },
+                        enabled = !interaction.busy,
+                        modifier = Modifier.weight(1f).heightIn(min = 58.dp).testTag("key_$key").semantics { contentDescription = label },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(vertical = 8.dp, horizontal = 4.dp),
+                        colors = ButtonDefaults.textButtonColors(contentColor = TraceColors.Ink)
+                    ) {
                         when (key) {
-                            "clear" -> Text("지우기", style = MaterialTheme.typography.labelMedium)
-                            "backspace" -> AppIcon(BankIcons.Delete)
-                            else -> Text(key, fontSize = 28.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+                            "clear" -> Text("지우기", style = MaterialTheme.typography.labelMedium, color = TraceColors.Muted)
+                            "backspace" -> AppIcon(BankIcons.Delete, size = 20)
+                            else -> Text(key, fontSize = 26.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
                         }
                     }
                 }
             }
         }
-        Space(14); Rule()
+        Space(10); Rule(); Space(4)
         MenuRow("송금 목적", "선택 사항", trailing = purpose.label, tag = "transfer_purpose") { purposeSheet = true }
-        if (!draft.recipient.known) Caption("처음 보내는 계좌예요. 받는 분과 금액을 한 번 더 확인해 주세요.")
+        if (!draft.recipient.known) {
+            Space(4); EditorialPanel { Caption("처음 보내는 계좌예요. 받는 분과 금액을 한 번 더 확인해 주세요.") }
+        }
     }
-    if (purposeSheet) ModalBottomSheet(onDismissRequest = { purposeSheet = false },
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true), containerColor = TraceColors.Surface) {
-        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 24.dp)) {
-            Text("어떤 돈을 보내시나요?", style = MaterialTheme.typography.headlineSmall); Space(12)
-            Caption("목적은 선택하지 않아도 괜찮아요. 대출 상환은 받는 경로를 함께 확인합니다."); Space(14)
+    if (purposeSheet) ModalBottomSheet(
+        onDismissRequest = { purposeSheet = false },
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = TraceColors.Surface
+    ) {
+        Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp)) {
+            Text("어떤 돈을 보내시나요?", style = MaterialTheme.typography.headlineSmall); Space(10)
+            Caption("선택하지 않아도 괜찮아요. 대출 상환은 받는 경로를 함께 확인합니다."); Space(14)
             Purpose.entries.forEach { option ->
-                Row(Modifier.fillMaxWidth().heightIn(min = 58.dp).clickable(role = Role.RadioButton) {
-                    purposeName = option.name; model.storeDraft(localDraft.copy(purpose = option)); purposeSheet = false
-                }.semantics { selected = purpose == option }.padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(role = Role.RadioButton) {
+                        purposeName = option.name
+                        model.storeDraft(localDraft.copy(purpose = option))
+                        purposeSheet = false
+                    }.semantics { selected = purpose == option }.padding(vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(option.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
-                    if (purpose == option) AppIcon(BankIcons.Check, tint = TraceColors.Deep, size = 20)
+                    if (purpose == option) AppIcon(BankIcons.Check, tint = TraceColors.Ink, size = 19)
                 }
+                if (option != Purpose.entries.last()) Rule()
             }
         }
     }
-    if (directInput) AlertDialog(onDismissRequest = { directInput = false }, title = { Text("송금 금액") },
-        text = { Column { Field(directDigits, "원", { directDigits = it.filter(Char::isDigit).take(9) },
-            Modifier.testTag("amount_direct_input"), keyboard = KeyboardType.Number); Space(12); Caption("${won(directDigits.toLongOrNull() ?: 0)}원") } },
+    if (directInput) AlertDialog(
+        onDismissRequest = { directInput = false },
+        title = { Text("송금 금액") },
+        text = { Column {
+            Field(directDigits, "원", { directDigits = it.filter(Char::isDigit).take(9) }, Modifier.testTag("amount_direct_input"), keyboard = KeyboardType.Number)
+            Space(10); Caption("${won(directDigits.toLongOrNull() ?: 0)}원")
+        } },
         confirmButton = { QuietButton("입력 완료") { update(directDigits); directInput = false } },
-        dismissButton = { QuietButton("취소") { directInput = false } }, containerColor = TraceColors.Surface)
+        dismissButton = { QuietButton("취소") { directInput = false } },
+        containerColor = TraceColors.Surface
+    )
 }
 
 @Composable fun TransferStateScreen(state: BankState, preferences: BankPreferences, interaction: InteractionState,
@@ -229,51 +279,77 @@ import app.saeon.trace.ui.design.*
     }
 }
 
-@Composable private fun ReviewScreen(state: BankState, record: TransferRecord, interaction: InteractionState, model: BankViewModel,
-                                     open: (String) -> Unit, back: () -> Unit) {
+@Composable private fun ReviewScreen(
+    state: BankState,
+    record: TransferRecord,
+    interaction: InteractionState,
+    model: BankViewModel,
+    open: (String) -> Unit,
+    back: () -> Unit
+) {
     val intent = record.intent
     val amountError = runCatching {
         BankEngine.validateAmount(state, intent.amount, intent.purpose, model.repository.clock.now())
     }.exceptionOrNull()?.message
-    Page(title = "보내기 전 확인", tag = "transfer_review", back = back, footer = {
-        PrimaryButton("${won(intent.amount)}원 보내기", Modifier.testTag("transfer_confirm"),
-            enabled = amountError == null && !interaction.busy && record.stage == TransferStage.REVIEW) { model.requestAuthorization(intent.id) }
+    Page(title = "송금", tag = "transfer_review", back = back, footer = {
+        PrimaryButton(
+            "${won(intent.amount)}원 보내기",
+            Modifier.testTag("transfer_confirm"),
+            enabled = amountError == null && !interaction.busy && record.stage == TransferStage.REVIEW
+        ) { model.requestAuthorization(intent.id) }
     }) {
-        Space(18); Money(intent.amount); Space(14)
-        Text(if (intent.recipient.kind == RecipientKind.INSTITUTION) "${intent.recipient.name}로" else "${intent.recipient.name}님에게",
-            style = MaterialTheme.typography.headlineSmall)
-        Space(30); Rule(); Space(12)
-        DetailRow("받는 계좌", "${intent.recipient.bank}\n${intent.recipient.account}")
-        DetailRow("출금 계좌", "새온 생활통장\n110-***-0001")
-        DetailRow("수수료", "0원")
-        if (intent.purpose != Purpose.GENERAL) DetailRow("송금 목적", intent.purpose.label)
-        Space(12); Rule(); Space(20)
+        MicroLabel("TRANSFER · 3 / 3"); Space(12)
+        Money(intent.amount)
+        Space(8)
+        Text(
+            if (intent.recipient.kind == RecipientKind.INSTITUTION) "${intent.recipient.name}로" else "${intent.recipient.name}님에게",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Medium
+        )
+        Space(24)
+        SurfaceBox(tint = TraceColors.SurfaceRaised) {
+            DetailRow("받는 계좌", "${intent.recipient.bank}\n${intent.recipient.account}")
+            Rule()
+            DetailRow("출금 계좌", "새온 생활통장\n110-***-0001")
+            Rule()
+            DetailRow("수수료", "0원")
+            if (intent.purpose != Purpose.GENERAL) {
+                Rule(); DetailRow("송금 목적", intent.purpose.label)
+            }
+        }
+        Space(18)
         if (intent.officialRouteId != null) {
-            SurfaceBox {
-                TraceSignature(); Space(10)
-                Body("수취 계좌가 바뀌어 새 거래로 확인합니다. 이전 인증은 사용하지 않아요.")
+            EditorialPanel(accent = true) {
+                TraceSignature(); Space(8)
+                Body("받는 계좌가 바뀌어 새 송금으로 확인합니다.")
+                Space(4); Caption("이전 거래의 인증은 사용하지 않아요.")
             }
         } else {
-            Caption("예금주 확인은 시연 데이터입니다. 이름이 일치해도 상대의 요청이 안전하다는 뜻은 아니에요.")
-            Space(12)
+            Caption("예금주 이름이 맞아도 상대의 요청까지 안전하다는 뜻은 아니에요.")
+            Space(5)
             QuietButton("금액·목적 수정", Modifier.testTag("review_edit"), enabled = record.stage == TransferStage.REVIEW && !interaction.busy) {
                 model.editReview(intent.id) { open("amount") }
             }
         }
         amountError?.let { ErrorNote(it) }
         record.error?.takeIf { it != amountError }?.let { ErrorNote(it) }
-        Space(24); SimulationNote()
+        Space(18); SimulationNote()
     }
 }
 
 @Composable private fun EvaluatingScreen(cancel: () -> Unit) {
     Page(title = "송금 확인", tag = "trace_evaluating", footer = { SecondaryButton("취소하고 돌아가기", onClick = cancel) }) {
-        Space(36); TraceSignature(); Space(28)
-        Headline("송금 앞의 맥락을\n확인하고 있어요."); Space(36)
-        NumberedReason(1, "요청의 목적"); Rule()
-        NumberedReason(2, "최근 위험 신호"); Rule()
-        NumberedReason(3, "수취인과 거래"); Space(28)
-        Caption("인증한 거래와 현재 정황이 같은지 확인합니다.")
+        Space(22); TraceSignature(); Space(24)
+        MicroLabel("CONTEXT CHECK", coral = true); Space(8)
+        Headline("송금 앞의 맥락을\n확인하고 있어요.")
+        Space(16)
+        Caption("인증한 거래와 지금의 위험 정황이 같은지 짧게 확인합니다.")
+        Space(28)
+        EditorialPanel {
+            NumberedReason(1, "요청의 목적")
+            Rule(); NumberedReason(2, "최근 위험 신호")
+            Rule(); NumberedReason(3, "수취인과 거래")
+        }
     }
 }
 

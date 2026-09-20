@@ -1,0 +1,51 @@
+name: SAEON optimized APK UI verification
+on:
+  push:
+    branches: [android/saeon-quality-r26b]
+    paths: ['.github/workflows/saeon-release-ui.yml', '.github/scripts/saeon-release-ui.py']
+  workflow_dispatch:
+    inputs:
+      build_run:
+        description: 'Run containing the saeon-quality-build artifact'
+        required: true
+        default: '35478402786'
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: saeon-release-ui-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  release-ui:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: saeon-quality-build
+          run-id: ${{ inputs.build_run || '35478402786' }}
+          github-token: ${{ github.token }}
+          path: release-input
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Boot Android 15
+        run: bash android-native/tools/boot-emulator.sh
+      - name: Exercise the actual R8-optimized APK through Android UI
+        run: python3 .github/scripts/saeon-release-ui.py release-input/delivery
+      - name: Stop emulator
+        if: always()
+        run: '${ANDROID_HOME}/platform-tools/adb emu kill || true'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: saeon-release-ui
+          path: android-native/verification/
+          if-no-files-found: error

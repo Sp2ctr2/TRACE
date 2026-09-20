@@ -178,6 +178,7 @@ internal fun textOverflow(text: TextLayoutResult, renderedSize: IntSize = text.s
     val explicitLines = text.layoutInput.text.text.count { it == '\n' } + 1
     val hardBreakTruncated = text.layoutInput.maxLines >= explicitLines && text.lineCount < explicitLines
     val omitted = text.multiParagraph.didExceedMaxLines ||
+        text.didOverflowHeight ||
         (0 until text.lineCount).any { text.isLineEllipsized(it) } ||
         hardBreakTruncated
     val effectiveHeight = minOf(text.size.height, renderedSize.height)

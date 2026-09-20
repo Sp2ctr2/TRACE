@@ -34,7 +34,8 @@ class TextBoundsAuditTest {
             val layouts = mutableListOf<TextLayoutResult>()
             compose.onNodeWithTag(tag).performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
             assertEquals("Text layout must be observable", 1, layouts.size)
-            return textOverflow(layouts.single())
+            val node = compose.onNodeWithTag(tag).fetchSemanticsNode()
+            return textOverflow(layouts.single(), node.size)
         }
         assertFalse("Unoccupied parent width is not text overflow", read("audit_short").exceedsBounds)
         assertTrue("Real horizontal clipping must fail", read("audit_horizontal").exceedsBounds)

@@ -31,7 +31,11 @@ class MainActivity : FragmentActivity() {
     private var speech: SpeechRecognizer? = null
     private var voiceActive by mutableStateOf(false)
     private var biometricPrompt: BiometricPrompt? = null
+    private var pendingVoiceDelivery: Long? = null
     private val microphonePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val requestedDelivery = pendingVoiceDelivery
+        pendingVoiceDelivery = null
+        if (navigation?.currentDestination?.route != "manual" || requestedDelivery != safetyModel.state.value.delivery) return@registerForActivityResult
         if (granted) startVoice() else safetyModel.showError("음성 입력을 쓰려면 마이크 권한이 필요해요. 내용을 직접 입력할 수도 있습니다. 녹음이나 송금은 실행하지 않았습니다.")
     }
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -44,7 +48,10 @@ class MainActivity : FragmentActivity() {
             val preferences by model.preferences.collectAsStateWithLifecycle()
             SaeonTheme(preferences.easyMode) {
                 SaeonApp(model, safetyModel, onNavigationReady = { navigation = it },
-                    onBiometric = ::authenticate, onVoice = { microphonePermission.launch(Manifest.permission.RECORD_AUDIO) },
+                    onBiometric = ::authenticate, onVoice = {
+                        pendingVoiceDelivery = safetyModel.state.value.delivery
+                        microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                    },
                     onStopVoice = ::stopVoice, voiceActive = voiceActive)
             }
         }
@@ -82,6 +89,7 @@ class MainActivity : FragmentActivity() {
         }
     }
     private fun startVoice() {
+        if (navigation?.currentDestination?.route != "manual") return
         if (Build.VERSION.SDK_INT < 31 || !SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
             safetyModel.showError("이 기기에는 기기 내 음성 인식이 준비되어 있지 않아요. 내용을 직접 입력해 주세요. 음성을 외부 서비스로 보내지 않았습니다.")
             return
@@ -123,6 +131,7 @@ class MainActivity : FragmentActivity() {
         }
     }
     private fun stopVoice() {
+        pendingVoiceDelivery = null
         val active = speech
         speech = null
         active?.cancel()

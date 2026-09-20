@@ -44,7 +44,12 @@ fun SaeonApp(
     val haptics = LocalHapticFeedback.current
     var lastState by remember { mutableStateOf<Pair<String, TransferStage>?>(null) }
     LaunchedEffect(nav) { onNavigationReady(nav) }
-    LaunchedEffect(shared.delivery) { if (shared.delivery != 0L) nav.navigate("manual") { launchSingleTop = true } }
+    // A cold ACTION_SEND can arrive before Room loads and before NavHost exists.
+    LaunchedEffect(shared.delivery, bank != null, fatal) {
+        if (shared.shared && shared.delivery != 0L && bank != null && fatal == null) {
+            nav.navigate("manual") { launchSingleTop = true }
+        }
+    }
     LaunchedEffect(bank?.current?.intent?.id, bank?.current?.stage) {
         bank?.current?.let { record ->
             val current = record.intent.id to record.stage

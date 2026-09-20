@@ -19,6 +19,8 @@ object TraceColors {
     val Divider = Color(0xFFDDDDD5)
     val Coral = Color(0xFFEF4A32)
     val Deep = Color(0xFFD93B25)
+    // 4.78:1 on paper; keep canonical Deep for the white-on-coral CTA.
+    val AccentInk = Color(0xFFC93420)
     val CoralLight = Color(0xFFFAE7DF)
     val White = Color.White
 }
@@ -43,7 +45,7 @@ fun SaeonTheme(easy: Boolean = false, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalEasyMode provides easy) {
         MaterialTheme(
             colorScheme = lightColorScheme(
-                primary = TraceColors.Deep, onPrimary = TraceColors.White,
+                primary = TraceColors.AccentInk, onPrimary = TraceColors.White,
                 primaryContainer = TraceColors.CoralLight, onPrimaryContainer = TraceColors.Ink,
                 secondary = TraceColors.Ink, onSecondary = TraceColors.White,
                 secondaryContainer = TraceColors.Paper, onSecondaryContainer = TraceColors.Ink,
@@ -52,7 +54,7 @@ fun SaeonTheme(easy: Boolean = false, content: @Composable () -> Unit) {
                 surface = TraceColors.Surface, onSurface = TraceColors.Ink,
                 surfaceVariant = TraceColors.Paper, onSurfaceVariant = TraceColors.Muted,
                 outline = TraceColors.Muted, outlineVariant = TraceColors.Divider,
-                error = TraceColors.Deep, onError = TraceColors.White,
+                error = TraceColors.AccentInk, onError = TraceColors.White,
                 errorContainer = TraceColors.CoralLight, onErrorContainer = TraceColors.Ink,
                 surfaceTint = TraceColors.Surface, scrim = TraceColors.Ink
             ), typography = type, content = content

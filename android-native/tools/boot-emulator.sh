@@ -5,8 +5,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="$ROOT/verification/logs"
 mkdir -p "$LOG"
 export ANDROID_SDK_ROOT="$SDK"
+export ANDROID_USER_HOME="$HOME/.android"
+export ANDROID_AVD_HOME="$ANDROID_USER_HOME/avd"
+mkdir -p "$ANDROID_AVD_HOME"
+if [ -n "${GITHUB_ENV:-}" ]; then
+  printf 'ANDROID_USER_HOME=%s\nANDROID_AVD_HOME=%s\n' "$ANDROID_USER_HOME" "$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+fi
 export PATH="$SDK/platform-tools:$SDK/emulator:$SDK/cmdline-tools/latest/bin:$PATH"
-# Exports in this shell do not survive the next GitHub Actions step.
 if [ -n "${GITHUB_PATH:-}" ]; then
   printf '%s\n' "$SDK/platform-tools" "$SDK/emulator" "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 fi
@@ -20,8 +25,7 @@ retry_install() {
   done
   return 1
 }
-# Headless QEMU still dynamically links the audio/X11 libraries. A missing
-# libpulse.so.0 used to terminate `emulator -version` before any test ran.
+# Headless QEMU still links audio/X11 libraries on Ubuntu runners.
 if [ "${GITHUB_ACTIONS:-false}" = true ]; then
   sudo apt-get update -qq
   sudo apt-get install -y --no-install-recommends libpulse0 libnss3 libx11-6 libxcb1 libxcomposite1 libxcursor1 libxi6 libxtst6 libxrandr2 libxkbcommon0 libasound2t64 libegl1 libgl1
@@ -30,9 +34,6 @@ if [ ! -x "$SDK/platform-tools/adb" ]; then retry_install 'platform-tools'; fi
 if [ ! -x "$SDK/emulator/emulator" ]; then retry_install 'emulator'; fi
 if [ ! -f "$SDK/system-images/android-35/google_apis/x86_64/system.img" ]; then retry_install "$IMAGE"; fi
 adb version | tee "$LOG/adb-version.txt"
-# The launcher supplies its own bundled libraries. Plain ldd on the inner
-# QEMU binary incorrectly reports those libraries as missing. Keep diagnostics
-# with that search path, and use the real launcher as the executable gate.
 LD_LIBRARY_PATH="$SDK/emulator/lib64:$SDK/emulator/lib64/qt/lib:${LD_LIBRARY_PATH:-}" \
   ldd "$SDK/emulator/qemu/linux-x86_64/qemu-system-x86_64" > "$LOG/emulator-libraries.txt" 2>&1 || true
 if ! emulator -version > "$LOG/emulator-version.txt" 2>&1; then
@@ -40,8 +41,9 @@ if ! emulator -version > "$LOG/emulator-version.txt" 2>&1; then
   exit 1
 fi
 sdkmanager --list_installed > "$LOG/installed-sdk.txt"
-printf 'no\n' | avdmanager create avd --force --name saeon35 --package "$IMAGE" --device pixel_6
-cat >> "$HOME/.android/avd/saeon35.avd/config.ini" <<'AVD'
+printf 'no\n' | avdmanager create avd --force --name saeon35 --package "$IMAGE" --device pixel_6 --path "$ANDROID_AVD_HOME/saeon35.avd"
+test -f "$ANDROID_AVD_HOME/saeon35.avd/config.ini"
+cat >> "$ANDROID_AVD_HOME/saeon35.avd/config.ini" <<'AVD'
 hw.ramSize=4096
 vm.heapSize=512
 hw.keyboard=yes

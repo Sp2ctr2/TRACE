@@ -3,6 +3,7 @@ package app.saeon.trace.ui.screens
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -107,7 +108,7 @@ private data class TimelineItem(val time: Long, val title: String, val descripti
                 }
                 Column(Modifier.weight(1f).padding(bottom = 28.dp)) {
                     Caption(timeLabel(item.time)); Space(6)
-                    Text(item.title, style = MaterialTheme.typography.titleSmall, color = if (item.accent) TraceColors.Deep else TraceColors.Ink)
+                    Text(item.title, style = MaterialTheme.typography.titleSmall, color = if (item.accent) TraceColors.AccentInk else TraceColors.Ink)
                     Space(6); Body(item.description, subdued = true)
                 }
             }
@@ -188,8 +189,12 @@ private data class TimelineItem(val time: Long, val title: String, val descripti
     val input by model.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val result = input.result
+    val leave: () -> Unit = { onStopVoice(); back() }
+    BackHandler(onBack = leave)
+    DisposableEffect(Unit) { onDispose { onStopVoice() } }
+    LaunchedEffect(input.delivery) { if (input.shared) onStopVoice() }
     if (result != null) {
-        Page(title = "내용 확인", tag = "manual_result", back = back, footer = {
+        Page(title = "내용 확인", tag = "manual_result", back = leave, footer = {
             PrimaryButton("송금 화면으로") { open("transfer") }
             SecondaryButton("다른 내용 확인") { model.clear() }
         }) {
@@ -208,10 +213,10 @@ private data class TimelineItem(val time: Long, val title: String, val descripti
         }
         return
     }
-    Page(title = if (input.shared) "공유한 내용 확인" else "직접 확인하기", tag = "shared_text_review", back = back, footer = {
+    Page(title = if (input.shared) "공유한 내용 확인" else "직접 확인하기", tag = "shared_text_review", back = leave, footer = {
         PrimaryButton(if (input.busy) "내용을 확인하고 있어요." else "TRACE로 확인", Modifier.testTag("share_consent"),
             enabled = input.text.isNotBlank() && input.text.length <= SignalExtractor.MAX_INPUT && !input.busy && !voiceActive) { model.analyze() }
-        SecondaryButton("취소", Modifier.testTag("share_cancel"), onClick = back)
+        SecondaryButton("취소", Modifier.testTag("share_cancel"), onClick = leave)
     }) {
         Space(10); Headline(if (input.shared) "이 내용을\n확인할까요?" else "받은 내용을\n직접 확인해요.")
         Space(14); Body("확인을 누르기 전에는 분석하지 않습니다. 필요한 내용만 남기고 확인해 주세요.", subdued = true)

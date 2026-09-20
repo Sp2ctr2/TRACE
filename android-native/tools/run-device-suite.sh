@@ -5,7 +5,11 @@ PACKAGE=app.saeon.trace.demo
 RUNNER="$PACKAGE.test/androidx.test.runner.AndroidJUnitRunner"
 mkdir -p verification/logs verification/apk
 collect() {
-  adb pull "/sdcard/Android/data/$PACKAGE/files/verification" verification/screens >/dev/null 2>&1 || true
+  rm -rf verification/screens.next
+  if adb pull "/sdcard/Android/data/$PACKAGE/files/verification" verification/screens.next >/dev/null 2>&1; then
+    rm -rf verification/screens
+    mv verification/screens.next verification/screens
+  fi
   adb logcat -b crash -d > verification/logs/crash-buffer.txt 2>/dev/null || true
   adb shell dumpsys gfxinfo "$PACKAGE" framestats > verification/logs/frame-stats.txt 2>/dev/null || true
   adb shell dumpsys accessibility > verification/logs/accessibility-services.txt 2>/dev/null || true
@@ -13,7 +17,17 @@ collect() {
   cp app/build/outputs/apk/debug/app-debug.apk verification/apk/saeon-trace-demo.apk 2>/dev/null || true
   (cd verification/apk && sha256sum *.apk > SHA256SUMS.txt) 2>/dev/null || true
 }
-trap collect EXIT
+finish_suite() {
+  local status=$?
+  trap - EXIT
+  set +e
+  collect
+  python3 tools/summarize-verification.py
+  local report_status=$?
+  if [ "$status" -ne 0 ]; then exit "$status"; fi
+  exit "$report_status"
+}
+trap finish_suite EXIT
 adb wait-for-device
 adb shell settings put global window_animation_scale 0
 adb shell settings put global transition_animation_scale 0
@@ -43,7 +57,7 @@ run_test() {
   grep -Eq '^OK \([0-9]+ tests?\)' "verification/logs/$name.txt"
   ! grep -q 'FAILURES!!!' "verification/logs/$name.txt"
 }
-SUITE=app.saeon.trace.RepositoryDeviceTest,app.saeon.trace.BankUiFlowTest,app.saeon.trace.GoldenScreensTest
+SUITE=app.saeon.trace.RepositoryDeviceTest,app.saeon.trace.BankUiFlowTest,app.saeon.trace.GoldenScreensTest,app.saeon.trace.PrivacyLifecycleTest
 for pass in pass-1 pass-2; do
   run_test "$pass" "$SUITE"
   run_test "$pass-seed" app.saeon.trace.SeedHoldProcessTest
@@ -71,5 +85,3 @@ adb shell wm size 786x1746
 adb shell cmd uimode night yes
 run_test dark-system-forced-light app.saeon.trace.LayoutMatrixTest
 adb shell cmd uimode night no
-collect
-python3 tools/summarize-verification.py

@@ -31,8 +31,13 @@ class MainActivity : FragmentActivity() {
     private var speech: SpeechRecognizer? = null
     private var voiceActive by mutableStateOf(false)
     private var biometricPrompt: BiometricPrompt? = null
+    private var previousRoute: String? = null
+    private var pendingVoiceDelivery: Long? = null
     private val microphonePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startVoice() else safetyModel.showError("음성 입력을 쓰려면 마이크 권한이 필요해요. 내용을 직접 입력할 수도 있습니다. 녹음이나 송금은 실행하지 않았습니다.")
+        val delivery = pendingVoiceDelivery
+        pendingVoiceDelivery = null
+        if (granted && delivery != null && delivery == safetyModel.state.value.delivery && navigation?.currentDestination?.route == "manual") startVoice()
+        else if (!granted && delivery != null) safetyModel.showError("음성 입력을 쓰려면 마이크 권한이 필요해요. 내용을 직접 입력할 수도 있습니다. 녹음이나 송금은 실행하지 않았습니다.")
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,8 +48,22 @@ class MainActivity : FragmentActivity() {
         setContent {
             val preferences by model.preferences.collectAsStateWithLifecycle()
             SaeonTheme(preferences.easyMode) {
-                SaeonApp(model, safetyModel, onNavigationReady = { navigation = it },
-                    onBiometric = ::authenticate, onVoice = { microphonePermission.launch(Manifest.permission.RECORD_AUDIO) },
+                SaeonApp(model, safetyModel, onNavigationReady = { controller ->
+                    if (navigation !== controller) {
+                        controller.addOnDestinationChangedListener { _, destination, _ ->
+                            if (previousRoute == "manual" && destination.route != "manual") {
+                                stopVoice()
+                                safetyModel.clear()
+                            }
+                            previousRoute = destination.route
+                        }
+                    }
+                    navigation = controller
+                },
+                    onBiometric = ::authenticate, onVoice = {
+                        pendingVoiceDelivery = safetyModel.state.value.delivery
+                        microphonePermission.launch(Manifest.permission.RECORD_AUDIO)
+                    },
                     onStopVoice = ::stopVoice, voiceActive = voiceActive)
             }
         }
@@ -56,6 +75,7 @@ class MainActivity : FragmentActivity() {
         incoming.removeExtra(Intent.EXTRA_TEXT)
         incoming.clipData = null
         intent = Intent(this, MainActivity::class.java)
+        stopVoice()
         safetyModel.receive(text)
     }
     private fun authenticate(challenge: AuthorizationChallenge) {
@@ -123,6 +143,7 @@ class MainActivity : FragmentActivity() {
         }
     }
     private fun stopVoice() {
+        pendingVoiceDelivery = null
         val active = speech
         speech = null
         active?.cancel()

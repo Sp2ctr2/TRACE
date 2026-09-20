@@ -40,7 +40,7 @@ The verified loan route is 새온은행 대출상환센터 / 새온은행 200-**
 
 ## Architecture
 
-- `core`: pure Kotlin immutable domain models, policy evaluator, bounded local signal extractor, transaction state machine, 35 JVM regression tests.
+- `core`: pure Kotlin immutable domain models, policy evaluator, bounded local signal extractor, transaction state machine and a JVM regression suite.
 - `app/ui`: native Compose design system, Navigation Compose destinations, lifecycle-aware StateFlow observation and Android ViewModels. Input state flows into the repository; navigation never authorizes a transaction.
 - `app/data`: Room ledger, explicit versioned JSON snapshot codec, DataStore non-financial preferences and a presentation-date clock that advances with elapsed time.
 - `app/security`: Android Keystore EC P-256 handle, SHA256withECDSA attestation signing, pinned local verifier and deterministic DemoBankGateway.

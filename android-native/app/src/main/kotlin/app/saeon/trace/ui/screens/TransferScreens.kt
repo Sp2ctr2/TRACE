@@ -471,7 +471,7 @@ import app.saeon.trace.ui.design.*
             Money(record.intent.amount, hero = false)
             Space(7)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                RecipientGlyph(record.intent.recipient.name, Modifier.size(34.dp))
+                RecipientGlyph(record.intent.recipient.name)
                 Body("${record.intent.recipient.name} · ${record.intent.recipient.bank}")
             }
         }

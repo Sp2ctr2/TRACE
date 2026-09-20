@@ -8,6 +8,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.Hyphens
+import androidx.compose.ui.text.intl.LocaleList
 import androidx.compose.ui.unit.sp
 
 object TraceColors {
@@ -19,13 +20,19 @@ object TraceColors {
     val Divider = Color(0xFFDDDDD5)
     val Coral = Color(0xFFEF4A32)
     val Deep = Color(0xFFD93B25)
+    // Canonical deep coral remains the CTA fill; small text needs more
+    // contrast on warm paper than it does against the white button label.
+    val CoralText = Color(0xFFCB3421)
+    val InputOutline = Color(0xFF8B8D82)
     val CoralLight = Color(0xFFFAE7DF)
     val White = Color.White
 }
 val LocalEasyMode = staticCompositionLocalOf { false }
 private fun style(size: Int, weight: FontWeight = FontWeight.Normal, line: Int = (size * 1.5).toInt()) = TextStyle(
     fontFamily = FontFamily.SansSerif, fontSize = size.sp, fontWeight = weight,
-    lineHeight = line.sp, letterSpacing = 0.sp, lineBreak = LineBreak.Paragraph, hyphens = Hyphens.None
+    lineHeight = line.sp, letterSpacing = 0.sp,
+    localeList = LocaleList("ko-KR"),
+    lineBreak = LineBreak.Paragraph.copy(wordBreak = LineBreak.WordBreak.Phrase), hyphens = Hyphens.None
 )
 @Composable
 fun SaeonTheme(easy: Boolean = false, content: @Composable () -> Unit) {
@@ -43,7 +50,7 @@ fun SaeonTheme(easy: Boolean = false, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalEasyMode provides easy) {
         MaterialTheme(
             colorScheme = lightColorScheme(
-                primary = TraceColors.Deep, onPrimary = TraceColors.White,
+                primary = TraceColors.CoralText, onPrimary = TraceColors.White,
                 primaryContainer = TraceColors.CoralLight, onPrimaryContainer = TraceColors.Ink,
                 secondary = TraceColors.Ink, onSecondary = TraceColors.White,
                 secondaryContainer = TraceColors.Paper, onSecondaryContainer = TraceColors.Ink,
@@ -52,7 +59,7 @@ fun SaeonTheme(easy: Boolean = false, content: @Composable () -> Unit) {
                 surface = TraceColors.Surface, onSurface = TraceColors.Ink,
                 surfaceVariant = TraceColors.Paper, onSurfaceVariant = TraceColors.Muted,
                 outline = TraceColors.Muted, outlineVariant = TraceColors.Divider,
-                error = TraceColors.Deep, onError = TraceColors.White,
+                error = TraceColors.CoralText, onError = TraceColors.White,
                 errorContainer = TraceColors.CoralLight, onErrorContainer = TraceColors.Ink,
                 surfaceTint = TraceColors.Surface, scrim = TraceColors.Ink
             ), typography = type, content = content

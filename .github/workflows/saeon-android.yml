@@ -63,11 +63,12 @@ jobs:
         run: |
           cd android-native
           mkdir -p delivery
-          zip -qr delivery/saeon-trace-android-source.zip . -x '*/build/*' '.gradle/*' 'delivery/*' 'local.properties' '*.jks' '*.keystore'
+          zip -qr delivery/saeon-trace-android-source.zip . -x '*/build/*' '.gradle/*' '.kotlin/*' '.android-user/*' 'verification/*' 'delivery/*' 'local.properties' '*.jks' '*.keystore'
       - name: Build, test and package the native project
         run: |
           set -o pipefail
           cd android-native
+          gradle --no-daemon --console=plain :core:test --rerun-tasks 2>&1 | tee delivery/domain-tests.log
           gradle --no-daemon --console=plain :core:test :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease :app:lintDebug 2>&1 | tee delivery/build.log
           gradle --no-daemon wrapper --gradle-version 8.11.1 --distribution-type bin
           chmod +x gradlew
@@ -75,8 +76,15 @@ jobs:
           cp app/build/outputs/apk/androidTest/debug/*.apk delivery/saeon-trace-test.apk
           cp app/build/outputs/apk/release/*.apk delivery/
           sha256sum delivery/*.apk > delivery/SHA256SUMS.txt
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          for apk in delivery/*.apk; do
+            echo "$apk" >> delivery/signatures.txt
+            "$APKSIGNER" verify --verbose --print-certs "$apk" >> delivery/signatures.txt
+          done
+          printf 'commit=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > delivery/provenance.txt
           rm delivery/saeon-trace-android-source.zip
-          zip -qr delivery/saeon-trace-android-source.zip . -x '*/build/*' '.gradle/*' 'delivery/*' 'local.properties' '*.jks' '*.keystore'
+          zip -qr delivery/saeon-trace-android-source.zip . -x '*/build/*' '.gradle/*' '.kotlin/*' '.android-user/*' 'verification/*' 'delivery/*' 'local.properties' '*.jks' '*.keystore'
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -104,9 +112,10 @@ jobs:
           path: artifact-input
       - name: Use the exact APKs produced by the build job
         run: |
-          mkdir -p android-native/app/build/outputs/apk/debug android-native/app/build/outputs/apk/androidTest/debug
+          mkdir -p android-native/app/build/outputs/apk/{debug,release,androidTest/debug}
           cp artifact-input/delivery/saeon-trace-demo.apk android-native/app/build/outputs/apk/debug/app-debug.apk
           cp artifact-input/delivery/saeon-trace-test.apk android-native/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          cp artifact-input/delivery/app-release.apk android-native/app/build/outputs/apk/release/app-release.apk
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

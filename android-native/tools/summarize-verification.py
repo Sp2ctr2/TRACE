@@ -35,7 +35,10 @@ for path in images:
     data = path.read_bytes()
     if len(data) < 24 or data[:8] != b'\x89PNG\r\n\x1a\n' or min(struct.unpack('>II', data[16:24])) < 200:
         image_errors.append(str(path))
+release_path = root / 'release' / 'release.json'
+release = json.loads(release_path.read_text()) if release_path.exists() else {}
 summary = {
+    'release_smoke': release,
     'instrumentation_runs': results,
     'instrumentation_test_executions': sum(result['tests'] for result in results.values()),
     'two_consecutive_full_passes': all((root / f'pass-{n}.passed').exists() for n in (1, 2)),
@@ -49,7 +52,8 @@ summary = {
     'apk_sha256': {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in (root / 'apk').glob('*.apk')},
 }
 summary['complete'] = (summary['two_consecutive_full_passes'] and not missing_runs and
-                       not missing_golden and not audit_failures and not image_errors and bool(summary['apk_sha256']))
+                       not missing_golden and not audit_failures and not image_errors and bool(summary['apk_sha256']) and
+                       release.get('installed_apk_matches_build', False))
 (root / 'verification.json').write_text(json.dumps(summary, indent=2, ensure_ascii=False))
 lines = ['# Device verification', '', 'Generated from actual Android instrumentation output.', '',
          f"Complete evidence: {summary['complete']}",

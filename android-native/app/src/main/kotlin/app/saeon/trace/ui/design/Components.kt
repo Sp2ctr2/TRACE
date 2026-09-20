@@ -111,7 +111,7 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
     OutlinedTextField(value, onChange, modifier.fillMaxWidth(), label = { Text(label) }, singleLine = maxLines == 1,
         minLines = minLines, maxLines = maxLines, enabled = enabled, textStyle = MaterialTheme.typography.bodyLarge,
         shape = RoundedCornerShape(12.dp), keyboardOptions = KeyboardOptions(keyboardType = keyboard),
-        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = TraceColors.Deep, unfocusedBorderColor = TraceColors.Divider,
+        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = TraceColors.Deep, unfocusedBorderColor = TraceColors.InputOutline,
             focusedContainerColor = TraceColors.Surface, unfocusedContainerColor = TraceColors.Surface, cursorColor = TraceColors.Deep))
 }
 @Composable fun Money(value: Long, modifier: Modifier = Modifier, prefix: String = "", hero: Boolean = true) {
@@ -153,7 +153,7 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
 @Composable fun NumberedReason(number: Int, title: String, description: String? = null, accent: Boolean = false) {
     Row(Modifier.fillMaxWidth().padding(vertical = 13.dp), horizontalArrangement = Arrangement.spacedBy(15.dp)) {
         Text(number.toString().padStart(2, '0'), Modifier.widthIn(min = 25.dp), style = MaterialTheme.typography.labelMedium,
-            color = if (accent) TraceColors.Deep else TraceColors.Muted)
+            color = if (accent) TraceColors.CoralText else TraceColors.Muted)
         Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
             if (description != null) { Space(5); Caption(description) }
@@ -165,7 +165,7 @@ fun dateLabel(value: Long): String = Instant.ofEpochMilli(value).atZone(ZoneId.o
 }
 @Composable fun ErrorNote(message: String) {
     Text(message, Modifier.fillMaxWidth().padding(vertical = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
-        style = MaterialTheme.typography.bodyMedium, color = TraceColors.Deep)
+        style = MaterialTheme.typography.bodyMedium, color = TraceColors.CoralText)
 }
 @Composable fun SimulationNote() { Caption("시연용 가상 거래 · 실제 자금 이동 없음") }
 @Composable fun OptionRow(label: String, checked: Boolean, description: String? = null, onChange: (Boolean) -> Unit) {

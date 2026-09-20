@@ -57,7 +57,7 @@ run_test() {
   if ! adb shell am instrument -w -r -e class "$classes" -e pass "$name" "$RUNNER" | tee "verification/logs/$name.txt"; then return 1; fi
   grep -Eq '^OK \([0-9]+ tests?\)' "verification/logs/$name.txt" && ! grep -q 'FAILURES!!!' "verification/logs/$name.txt"
 }
-SUITE=app.saeon.trace.RepositoryDeviceTest,app.saeon.trace.BankUiFlowTest,app.saeon.trace.ViewModelBoundaryTest,app.saeon.trace.AuditMeasurementTest,app.saeon.trace.GoldenScreensTest
+SUITE=app.saeon.trace.RepositoryDeviceTest,app.saeon.trace.BankUiFlowTest,app.saeon.trace.ViewModelBoundaryTest,app.saeon.trace.AuditMeasurementTest,app.saeon.trace.InputBoundaryTest,app.saeon.trace.GoldenScreensTest
 for pass in pass-1 pass-2; do
   run_test "$pass" "$SUITE"
   run_test "$pass-seed" app.saeon.trace.SeedHoldProcessTest
@@ -88,4 +88,5 @@ adb shell cmd uimode night yes
 run_test dark-system-forced-light app.saeon.trace.LayoutMatrixTest || echo "Forced-light failure recorded" >&2
 adb shell cmd uimode night no
 collect
+python3 tools/verify-release.py
 python3 tools/summarize-verification.py

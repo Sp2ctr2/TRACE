@@ -3,6 +3,7 @@ package app.saeon.trace.ui.screens
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -107,7 +108,7 @@ private data class TimelineItem(val time: Long, val title: String, val descripti
                 }
                 Column(Modifier.weight(1f).padding(bottom = 28.dp)) {
                     Caption(timeLabel(item.time)); Space(6)
-                    Text(item.title, style = MaterialTheme.typography.titleSmall, color = if (item.accent) TraceColors.Deep else TraceColors.Ink)
+                    Text(item.title, style = MaterialTheme.typography.titleSmall, color = if (item.accent) TraceColors.CoralText else TraceColors.Ink)
                     Space(6); Body(item.description, subdued = true)
                 }
             }
@@ -185,6 +186,7 @@ private data class TimelineItem(val time: Long, val title: String, val descripti
 
 @Composable fun ManualCheckScreen(model: SafetyViewModel, open: (String) -> Unit, back: () -> Unit,
                                   onVoice: () -> Unit, onStopVoice: () -> Unit, voiceActive: Boolean) {
+    BackHandler(onBack = back)
     val input by model.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val result = input.result

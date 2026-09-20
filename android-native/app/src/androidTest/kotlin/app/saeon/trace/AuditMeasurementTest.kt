@@ -1,5 +1,8 @@
 package app.saeon.trace
 
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import app.saeon.trace.ui.design.TraceColors
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -16,6 +19,22 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class AuditMeasurementTest : UiHarness() {
+    @Test fun functionalTextAndInputBoundariesMeetContrastThresholds() {
+        fun contrast(a: Color, b: Color): Float {
+            val light = maxOf(a.luminance(), b.luminance())
+            val dark = minOf(a.luminance(), b.luminance())
+            return (light + 0.05f) / (dark + 0.05f)
+        }
+        for (background in listOf(TraceColors.Paper, TraceColors.Surface, TraceColors.White)) {
+            for (foreground in listOf(TraceColors.Ink, TraceColors.Muted, TraceColors.CoralText)) {
+                assertTrue("Text contrast: $foreground / $background", contrast(foreground, background) >= 4.5f)
+            }
+            assertTrue("Input boundary contrast", contrast(TraceColors.InputOutline, background) >= 3f)
+        }
+        assertTrue("Primary button label contrast", contrast(TraceColors.White, TraceColors.Deep) >= 4.5f)
+        assertEquals(Color(0xFFEF4A32), TraceColors.Coral)
+        assertEquals(Color(0xFFD93B25), TraceColors.Deep)
+    }
     private fun measurer() = TextMeasurer(createFontFamilyResolver(context), Density(2f), LayoutDirection.Ltr)
     @Test fun parentParagraphWidthIsNotMistakenForClippedGlyphs() {
         val text = AnnotatedString("TRACE")

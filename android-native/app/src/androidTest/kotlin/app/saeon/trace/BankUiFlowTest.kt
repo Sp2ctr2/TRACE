@@ -100,8 +100,8 @@ class BankUiFlowTest : UiHarness() {
         navigate("history")
         compose.onNodeWithTag("history_search").performTextInput("아무도없는검색")
         compose.onNodeWithText("해당하는 거래가 없어요.").assertExists()
-        device.pressBack(); compose.waitForIdle()
-        if (compose.onAllNodesWithTag("home").fetchSemanticsNodes().isEmpty()) device.pressBack()
+        pressPhysicalBack(); compose.waitForIdle()
+        if (compose.onAllNodesWithTag("home").fetchSemanticsNodes().isEmpty()) pressPhysicalBack()
         waitScreen("home")
     }
     @Test fun zeroAndInsufficientAmountsCannotAdvance() {
@@ -141,7 +141,7 @@ class BankUiFlowTest : UiHarness() {
     @Test fun physicalBackDismissesAuthenticationWithoutSending() {
         fresh(); createReview(DemoScenario.NORMAL)
         tap("transfer_confirm"); waitScreen("auth_confirm")
-        device.pressBack()
+        pressPhysicalBack()
         compose.waitUntil(10_000) { state.current?.stage == TransferStage.REVIEW }
         compose.onAllNodesWithTag("auth_confirm").assertCountEquals(0)
         assertEquals(Fixtures.START_BALANCE, state.balance)

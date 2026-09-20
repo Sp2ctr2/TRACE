@@ -27,7 +27,7 @@ class TextBoundsAuditTest {
                 Text("This sentence must not fit into forty dp.",
                     Modifier.width(40.dp).testTag("audit_horizontal"), softWrap = false, overflow = TextOverflow.Clip)
                 Text("첫 번째 줄\n두 번째 줄", Modifier.testTag("audit_omitted"), maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("첫 번째 줄\n두 번째 줄", Modifier.height(18.dp).testTag("audit_vertical"), overflow = TextOverflow.Clip)
+                Text("첫 번째 줄\n두 번째 줄", Modifier.testTag("audit_vertical").height(18.dp), overflow = TextOverflow.Clip)
             }
         }
         fun read(tag: String): TextOverflowMetric {

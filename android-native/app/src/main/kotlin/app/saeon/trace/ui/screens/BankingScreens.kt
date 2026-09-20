@@ -38,7 +38,7 @@ fun HomeScreen(state: BankState, preferences: BankPreferences, model: BankViewMo
             Space(18)
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
-                    MicroLabel("MAIN ACCOUNT")
+                    MicroLabel("주 계좌")
                     Space(5)
                     Text("새온 생활통장", style = MaterialTheme.typography.titleMedium)
                 }
@@ -175,7 +175,7 @@ fun HomeScreen(state: BankState, preferences: BankPreferences, model: BankViewMo
 
 @Composable fun AssetsScreen(state: BankState, open: (String) -> Unit) {
     Page(title = "내 자산", tag = "assets") {
-        Space(10); MicroLabel("TOTAL ASSETS"); Space(8)
+        Space(10); MicroLabel("총 자산"); Space(8)
         Money(state.balance + state.savings)
         Space(8); Caption("대출 잔액은 보유 자산과 분리해서 보여드려요.")
         Space(28); Rule(); Space(14)
@@ -198,7 +198,7 @@ fun HomeScreen(state: BankState, preferences: BankPreferences, model: BankViewMo
     val context = LocalContext.current
     var copied by remember { mutableStateOf(false) }
     Page(title = "새온 생활통장", tag = "account_detail", back = back) {
-        Space(8); MicroLabel("AVAILABLE BALANCE"); Space(8); Money(state.balance); Space(8)
+        Space(8); MicroLabel("출금 가능 금액"); Space(8); Money(state.balance); Space(8)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Caption("새온은행 · 110-***-0001", Modifier.weight(1f))
             IconAction(BankIcons.Copy, "가상 계좌 정보 복사") {

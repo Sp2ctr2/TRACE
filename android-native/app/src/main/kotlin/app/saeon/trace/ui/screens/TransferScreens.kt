@@ -32,7 +32,7 @@ import app.saeon.trace.ui.design.*
     val favorites = state.recipients.filter { it.id in preferences.favoriteIds && recent.none { r -> r.id == it.id } }
     val matches = state.recipients.filter { query.isBlank() || it.name.contains(query) || it.account.contains(query) || it.bank.contains(query) }
     Page(title = "송금", tag = "transfer_recipient") {
-        Space(8); MicroLabel("TRANSFER · 1 / 3"); Space(10)
+        Space(8); MicroLabel("받는 분"); Space(10)
         Headline("누구에게 보낼까요?")
         Space(20)
         Field(query, "이름·은행·계좌 검색", { query = it }, Modifier.testTag("recipient_search"))
@@ -151,7 +151,7 @@ import app.saeon.trace.ui.design.*
             model.review(localDraft) { open("transfer_state") }
         }
     }) {
-        MicroLabel("TRANSFER · 2 / 3"); Space(12)
+        MicroLabel("금액"); Space(12)
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             RecipientGlyph(draft.recipient.name)
             Column(Modifier.weight(1f)) {
@@ -298,7 +298,7 @@ import app.saeon.trace.ui.design.*
             enabled = amountError == null && !interaction.busy && record.stage == TransferStage.REVIEW
         ) { model.requestAuthorization(intent.id) }
     }) {
-        MicroLabel("TRANSFER · 3 / 3"); Space(12)
+        MicroLabel("최종 확인"); Space(12)
         Money(intent.amount)
         Space(8)
         Text(
@@ -340,7 +340,7 @@ import app.saeon.trace.ui.design.*
 @Composable private fun EvaluatingScreen(cancel: () -> Unit) {
     Page(title = "송금 확인", tag = "trace_evaluating", footer = { SecondaryButton("취소하고 돌아가기", onClick = cancel) }) {
         Space(22); TraceSignature(); Space(24)
-        MicroLabel("CONTEXT CHECK", coral = true); Space(8)
+        MicroLabel("거래 맥락 확인", coral = true); Space(8)
         Headline("송금 앞의 맥락을\n확인하고 있어요.")
         Space(16)
         Caption("인증한 거래와 지금의 위험 정황이 같은지 짧게 확인합니다.")

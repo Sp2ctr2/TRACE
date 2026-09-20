@@ -6,11 +6,14 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
@@ -29,80 +32,165 @@ fun HomeScreen(state: BankState, preferences: BankPreferences, model: BankViewMo
         IconAction(BankIcons.Bell, "알림") { open("notifications") }
         IconAction(BankIcons.Profile, "내 정보") { open("profile") }
     }) {
-        Space(16)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("새온 생활통장", Modifier.weight(1f), style = MaterialTheme.typography.titleSmall)
-            IconAction(BankIcons.Eye, if (preferences.hideBalance) "잔액 보이기" else "잔액 숨기기") {
-                model.preference { hideBalance(!preferences.hideBalance) }
+        Space(8)
+        SurfaceBox(tint = TraceColors.SurfaceRaised) {
+            AccentRule(28)
+            Space(18)
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    MicroLabel("MAIN ACCOUNT")
+                    Space(5)
+                    Text("새온 생활통장", style = MaterialTheme.typography.titleMedium)
+                }
+                IconAction(BankIcons.Eye, if (preferences.hideBalance) "잔액 보이기" else "잔액 숨기기") {
+                    model.preference { hideBalance(!preferences.hideBalance) }
+                }
             }
+            Space(16)
+            if (preferences.hideBalance) {
+                Text("잔액 숨김", Modifier.testTag("home_balance"), style = MaterialTheme.typography.displaySmall)
+            } else {
+                Money(state.balance, Modifier.testTag("home_balance"))
+            }
+            Space(7)
+            Caption("110-***-0001")
         }
-        if (preferences.hideBalance) Text("잔액 숨김", Modifier.testTag("home_balance"), style = MaterialTheme.typography.displaySmall)
-        else Money(state.balance, Modifier.testTag("home_balance"))
-        Space(8); Caption("새온은행 110-***-0001")
-        Space(20)
-        Row(Modifier.fillMaxWidth()) {
-            val actions = listOf(Triple("송금", BankIcons.Transfer, "transfer"), Triple("가져오기", BankIcons.Download, "bring"), Triple("내역", BankIcons.History, "history"))
-            actions.forEachIndexed { index, (label, icon, route) ->
-                if (index > 0) VerticalDivider(Modifier.height(24.dp).align(Alignment.CenterVertically), color = TraceColors.Divider)
-                Row(Modifier.weight(1f).heightIn(min = 56.dp).clickable(role = Role.Button) { open(route) }
-                    .testTag(if (index == 0) "home_transfer" else "home_$route"),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-                    AppIcon(icon, size = 19); Text(label, style = MaterialTheme.typography.labelMedium)
+
+        Space(12)
+        val quickActions = listOf(
+            Triple("송금", BankIcons.Transfer, "transfer"),
+            Triple("가져오기", BankIcons.Download, "bring"),
+            Triple("내역", BankIcons.History, "history")
+        )
+        val largeQuickActions = LocalDensity.current.fontScale >= 1.5f
+        if (largeQuickActions) {
+            Column(Modifier.fillMaxWidth()) {
+                quickActions.forEachIndexed { index, (label, icon, route) ->
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 62.dp)
+                            .clickable(role = Role.Button) { open(route) }
+                            .testTag(if (index == 0) "home_transfer" else "home_$route")
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Box(Modifier.size(36.dp).background(TraceColors.Soft, CircleShape), contentAlignment = Alignment.Center) {
+                            AppIcon(icon, size = 18, tint = TraceColors.InkSoft)
+                        }
+                        Text(label, Modifier.weight(1f).testTag("home_action_label_$route"),
+                            style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        AppIcon(BankIcons.Chevron, size = 16, tint = TraceColors.Muted)
+                    }
+                    if (index < quickActions.lastIndex) Rule()
+                }
+            }
+        } else {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                quickActions.forEachIndexed { index, (label, icon, route) ->
+                    Column(
+                        Modifier.weight(1f).heightIn(min = 74.dp)
+                            .clickable(role = Role.Button) { open(route) }
+                            .testTag(if (index == 0) "home_transfer" else "home_$route")
+                            .padding(vertical = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(Modifier.size(36.dp).background(TraceColors.Soft, CircleShape), contentAlignment = Alignment.Center) {
+                            AppIcon(icon, size = 18, tint = TraceColors.InkSoft)
+                        }
+                        Space(7)
+                        Text(label, Modifier.testTag("home_action_label_$route"), style = MaterialTheme.typography.labelMedium)
+                    }
                 }
             }
         }
-        Space(16); Rule(); Space(20)
+
+        Space(10); Rule(); Space(18)
         SectionTitle("최근 거래", "전체 내역") { open("history") }
-        state.receipts.take(3).forEach { ReceiptRow(it) { open("receipt/${it.id}") } }
-        Space(12); Rule(); Space(20)
+        state.receipts.take(3).forEachIndexed { index, receipt ->
+            ReceiptRow(receipt) { open("receipt/${receipt.id}") }
+            if (index < state.receipts.take(3).lastIndex) Rule()
+        }
+
         if (state.recurringEnabled) {
+            Space(22); Rule(); Space(18)
             SectionTitle("다가오는 자동이체")
-            MenuRow("통신비", "09월 25일 · 새온 생활통장", icon = BankIcons.Calendar, trailing = "68,000원") { open("recurring") }
-            Space(12); Rule(); Space(16)
-        }
-        Row(Modifier.fillMaxWidth().heightIn(min = 72.dp).clickable(role = Role.Button) { open("safety") },
-            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(BankIcons.Trace, null, Modifier.size(26.dp), tint = TraceColors.Coral)
-            Column(Modifier.weight(1f)) {
-                Text(if (state.pending.isEmpty()) "TRACE 안전 확인" else "확인이 필요한 송금 ${state.pending.size}건", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                Space(3)
-                Caption(if (state.pending.isEmpty()) "최근 연결된 위험 정황 ${if (state.events.any { it.active(model.repository.clock.now()) }) "확인 가능" else "없음"}" else "아직 보내지 않았어요. 안전 센터에서 확인하세요.")
+            EditorialPanel {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("통신비", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                        Space(4); Caption("09월 25일 · 새온 생활통장")
+                    }
+                    Text("68,000원", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                }
             }
-            AppIcon(BankIcons.Chevron, size = 18, tint = TraceColors.Muted)
         }
-        Space(22); SimulationNote()
+
+        Space(24); Rule(); Space(16)
+        Row(
+            Modifier.fillMaxWidth().heightIn(min = 72.dp).clickable(role = Role.Button) { open("safety") },
+            horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(BankIcons.Trace, null, Modifier.size(22.dp), tint = TraceColors.Coral)
+            Column(Modifier.weight(1f)) {
+                Text(if (state.pending.isEmpty()) "TRACE 안전 확인" else "확인이 필요한 송금 ${state.pending.size}건",
+                    style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                Space(3)
+                Caption(if (state.pending.isEmpty()) "최근 연결된 위험 정황 없음" else "아직 돈은 나가지 않았어요. 확인이 필요합니다.")
+            }
+            AppIcon(BankIcons.Chevron, size = 17, tint = TraceColors.Muted)
+        }
+        Space(14); SimulationNote()
     }
 }
 
 @Composable fun ReceiptRow(receipt: TransferReceipt, onClick: () -> Unit) {
-    Column(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick).heightIn(min = 76.dp).padding(vertical = 13.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top) {
-            Text(receipt.recipient.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-            Text("${if (receipt.direction == Direction.DEBIT) "−" else "+"}${won(receipt.amount)}원",
-                Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, textAlign = TextAlign.End)
+    val largeText = LocalDensity.current.fontScale >= 1.3f
+    val amount = "${if (receipt.direction == Direction.DEBIT) "−" else "+"}${won(receipt.amount)}원"
+    val base = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick)
+        .heightIn(min = if (largeText) 94.dp else 72.dp).padding(vertical = 12.dp)
+    if (largeText) {
+        Column(base, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(receipt.recipient.name, Modifier.testTag("receipt_name_${receipt.id}"),
+                style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(amount, Modifier.testTag("receipt_amount_${receipt.id}"),
+                style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, softWrap = false)
+            Caption("${dateLabel(receipt.completedAt).substring(5)} · ${receipt.memo.ifEmpty { receipt.purpose.label }}")
         }
-        Space(4)
-        Caption("${dateLabel(receipt.completedAt).substring(5)} · ${receipt.memo.ifEmpty { receipt.purpose.label }}")
+    } else {
+        Row(base, verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(Modifier.weight(1f)) {
+                Text(receipt.recipient.name, Modifier.testTag("receipt_name_${receipt.id}"),
+                    style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Space(4)
+                Caption("${dateLabel(receipt.completedAt).substring(5)} · ${receipt.memo.ifEmpty { receipt.purpose.label }}")
+            }
+            Text(amount, Modifier.testTag("receipt_amount_${receipt.id}"),
+                style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.End, maxLines = 1, softWrap = false)
+        }
     }
 }
 
 @Composable fun AssetsScreen(state: BankState, open: (String) -> Unit) {
     Page(title = "내 자산", tag = "assets") {
-        Space(16); Caption("총 보유 자산"); Space(8); Money(state.balance + state.savings); Space(10)
-        Caption("대출 잔액은 보유 자산과 별도로 표시해요.")
-        Space(32); Rule(); Space(18)
-        SectionTitle("입출금")
-        MenuRow("새온 생활통장", "${won(state.balance)}원", BankIcons.Bank, tag = "asset_primary_account") { open("account") }
-        Space(14); Rule(); Space(18)
-        SectionTitle("예·적금")
-        MenuRow("새온 모아적금", "${won(state.savings)}원", BankIcons.Assets) { open("savings") }
-        Space(14); Rule(); Space(18)
-        SectionTitle("카드")
-        MenuRow("새온 체크카드", "이번 달 382,400원", BankIcons.Card) { open("card") }
-        Space(14); Rule(); Space(18)
-        SectionTitle("대출")
-        MenuRow(Fixtures.LOAN_NAME, "잔액 ${won(state.loanBalance)}원", BankIcons.Bank) { open("loan") }
-        Space(24); Caption("내 자산은 이 기기의 시연 데이터로 구성됩니다.")
+        Space(10); MicroLabel("TOTAL ASSETS"); Space(8)
+        Money(state.balance + state.savings)
+        Space(8); Caption("대출 잔액은 보유 자산과 분리해서 보여드려요.")
+        Space(28); Rule(); Space(14)
+
+        SectionTitle("내 계좌")
+        MenuRow("새온 생활통장", "110-***-0001", BankIcons.Bank, tag = "asset_primary_account", trailing = "${won(state.balance)}원") { open("account") }
+        Rule()
+        MenuRow("새온 모아적금", "220-***-0102", BankIcons.Assets, trailing = "${won(state.savings)}원") { open("savings") }
+
+        Space(24); Rule(); Space(14)
+        SectionTitle("카드·대출")
+        MenuRow("새온 체크카드", "이번 달 이용", BankIcons.Card, trailing = "382,400원") { open("card") }
+        Rule()
+        MenuRow(Fixtures.LOAN_NAME, "남은 대출 원금", BankIcons.Bank, trailing = "${won(state.loanBalance)}원") { open("loan") }
+        Space(22); SimulationNote()
     }
 }
 
@@ -110,9 +198,9 @@ fun HomeScreen(state: BankState, preferences: BankPreferences, model: BankViewMo
     val context = LocalContext.current
     var copied by remember { mutableStateOf(false) }
     Page(title = "새온 생활통장", tag = "account_detail", back = back) {
-        Space(12); Caption("출금 가능 잔액"); Space(8); Money(state.balance); Space(8)
+        Space(8); MicroLabel("AVAILABLE BALANCE"); Space(8); Money(state.balance); Space(8)
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Caption("새온은행 110-***-0001", Modifier.weight(1f))
+            Caption("새온은행 · 110-***-0001", Modifier.weight(1f))
             IconAction(BankIcons.Copy, "가상 계좌 정보 복사") {
                 (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(
                     ClipData.newPlainText("새온 시연 계좌", "새온은행 · 110-***-0001 · 실제 입금 불가"))
@@ -121,12 +209,28 @@ fun HomeScreen(state: BankState, preferences: BankPreferences, model: BankViewMo
         }
         if (copied) Caption("마스킹된 시연 계좌 정보를 복사했어요.")
         Space(20)
-        PrimaryButton("보내기") { open("transfer") }
-        SecondaryButton("내 계좌에서 가져오기") { open("bring") }
-        Space(20); Rule(); Space(16)
-        SectionTitle("거래 내역", "검색·필터") { open("history") }
-        state.receipts.take(8).forEach { ReceiptRow(it) { open("receipt/${it.id}") } }
-        Space(20); DetailRow("계좌 종류", "입출금 통장"); DetailRow("송금 수수료", "0원")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = { open("transfer") }, modifier = Modifier.weight(1f).heightIn(min = 54.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = TraceColors.Ink, contentColor = TraceColors.White),
+                elevation = ButtonDefaults.buttonElevation(0.dp)
+            ) { Text("보내기", style = MaterialTheme.typography.labelLarge) }
+            OutlinedButton(
+                onClick = { open("bring") }, modifier = Modifier.weight(1f).heightIn(min = 54.dp),
+                shape = RoundedCornerShape(10.dp), border = BorderStroke(1.dp, TraceColors.DividerStrong),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TraceColors.Ink)
+            ) { Text("가져오기", style = MaterialTheme.typography.labelLarge) }
+        }
+        Space(26); Rule(); Space(14)
+        SectionTitle("최근 거래", "전체 내역") { open("history") }
+        state.receipts.take(6).forEachIndexed { index, receipt ->
+            ReceiptRow(receipt) { open("receipt/${receipt.id}") }
+            if (index < state.receipts.take(6).lastIndex) Rule()
+        }
+        Space(22); Rule(); Space(10)
+        DetailRow("계좌 종류", "입출금 통장")
+        DetailRow("송금 수수료", "0원")
         Space(12); SimulationNote()
     }
 }

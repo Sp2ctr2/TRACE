@@ -1,0 +1,32 @@
+@Composable private fun SceneNode(n:JSONObject,data:SceneData,screen:String,action:(String)->Unit,outer:Modifier=Modifier){
+    val d=LocalDocument.current;val senior=LocalSceneSenior.current;val p=n.optJSONObject("props")?:JSONObject();val type=n.optString("type");val safe=type in SceneDocument.mandatory[screen].orEmpty();val primitive=type in setOf("rectangle","ellipse","line","path","polygon","star","boolean","image","frame","group","instance","richtext")
+    val state=data.blockStates[n.optString("id")]?:data.state
+    val free=p.optString("position")=="absolute"&&!safe;val bg=when{safe->d.color("background","#FBFAF7");p.has("background")->SceneDocument.colorValue(p.optString("background"),"#FBFAF7");p.optString("variant")=="surface"->d.color("surface","#FFFFFF");type in setOf("frame","group","instance")&&p.optString("fill")!in listOf("","none","transparent")->SceneDocument.colorValue(p.optString("fill"),"#FFFFFF");else->Color.Transparent}
+    val anim=remember(n.optString("id")){Animatable(0f)};val motion=p.optJSONObject("motion");val keys=p.optJSONArray("keyframes")?.nodes().orEmpty().sortedBy{it.f("time")};val duration=max(motion?.optInt("duration",240)?:240,keys.lastOrNull()?.optInt("time",0)?:0).coerceIn(0,5000);val moving=!safe&&!senior&&(keys.isNotEmpty()||p.optString("motionType") in setOf("fade","slide","scale"))
+    LaunchedEffect(n.optString("id"),moving,duration){if(moving){anim.snapTo(0f);kotlinx.coroutines.delay((motion?.optLong("delay",0)?:0).coerceIn(0,5000));anim.animateTo(1f,tween(duration,easing=if(motion?.optString("easing")=="linear")LinearEasing else FastOutSlowInEasing))}else anim.snapTo(1f)}
+    val progress=anim.value;fun interpolated(key:String,default:Float):Float{if(keys.isEmpty())return default;val time=duration*progress;val right=keys.indexOfFirst{it.f("time")>=time}.let{if(it<0)keys.lastIndex else it};if(right==0)return keys[0].f(key,default);val a=keys[right-1];val b=keys[right];val f=((time-a.f("time"))/(b.f("time")-a.f("time")).coerceAtLeast(1f)).coerceIn(0f,1f);return a.f(key,default)+(b.f(key,default)-a.f(key,default))*f}
+    var mod=outer.zIndex(if(safe)100f else 0f).then(if(p.optString("widthMode")=="hug")Modifier.wrapContentWidth() else if(p.has("width")&&!safe&&p.optString("widthMode")!="fill")Modifier.width(p.f("width",180f,8f,2400f).dp) else Modifier.fillMaxWidth())
+    if(p.has("height")&&!safe)mod=mod.height(p.f("height",100f,4f,3000f).dp)
+    if(!free)mod=mod.padding(top=p.f("marginTop",0f,0f,240f).dp,bottom=p.f("marginBottom",if(primitive)0f else d.token("gap",18).toFloat(),0f,240f).dp)
+    val radius=p.f("radius",if(p.optString("variant")=="plain")0f else d.token("radius",14).toFloat(),0f,500f)
+    mod=mod.graphicsLayer{alpha=if(safe)1f else p.f("opacity",1f,0f,1f)*if(keys.isNotEmpty())interpolated("opacity",1f) else if(moving)progress else 1f;rotationZ=if(safe)0f else p.f("rotation")+interpolated("rotation",0f);translationX=(if(free||safe)0f else p.f("x"))*density+interpolated("x",0f)*density;translationY=(if(free||safe)0f else p.f("y"))*density+(if(keys.isEmpty()&&p.optString("motionType")=="slide")16f*(1-progress) else interpolated("y",0f))*density;val sc=if(keys.isEmpty()&&p.optString("motionType")=="scale").94f+.06f*progress else interpolated("scale",1f);scaleX=sc;scaleY=sc}
+    mod=mod.background(bg,RoundedCornerShape(radius.dp));if(p.optString("variant")=="outline")mod=mod.border(1.dp,d.color("border","#E2E1DA"),RoundedCornerShape(radius.dp));if(p.optBoolean("clip")&&!safe)mod=mod.clip(RoundedCornerShape(radius.dp))
+    val click=p.optString("action");if(primitive&&click.isNotBlank()&&!safe)mod=mod.clickable(role=Role.Button){action(click)}
+    mod=mod.padding(p.f("padding",if(p.optString("variant") in listOf("surface","outline"))18f else 0f,0f,120f).dp).testTag(n.optString("id"))
+    val color=if(safe) { if(bg.luminance()>.4f)Color(0xFF20211F) else Color.White } else if(p.has("color"))SceneDocument.colorValue(p.optString("color"),"#20211F") else LocalTextStyle.current.color
+    val style=LocalTextStyle.current.copy(color=color,fontSize=if(safe) (if(senior)20 else 16).sp else if(p.has("fontSize"))p.f("fontSize",16f,10f,100f).sp else LocalTextStyle.current.fontSize,fontWeight=FontWeight(p.optInt("weight",450).coerceIn(100,900)),letterSpacing=p.f("letterSpacing",0f,-6f,12f).sp,textAlign=when(p.optString("align")){"center"->TextAlign.Center;"right"->TextAlign.End;else->TextAlign.Start})
+    CompositionLocalProvider(LocalTextStyle provides style){
+        Column(mod){
+            if(state!="content"&&!safe&&type !in listOf("heading","brand","divider","spacer")){
+                if(state=="loading"){Column(Modifier.fillMaxWidth().heightIn(min=76.dp).padding(vertical=12.dp),verticalArrangement=Arrangement.spacedBy(12.dp)){repeat((p.optJSONObject("loading")?.optInt("lines",3)?:3).coerceIn(1,8)){i->Box(Modifier.fillMaxWidth(listOf(.62f,.88f,.44f,.73f)[i%4]).height(if(i==0)18.dp else 11.dp).background(d.color("border","#E2E1DA"),RoundedCornerShape(5.dp)))}}}
+                else {Text(if(state=="error")"불러오지 못했어요" else "아직 내역이 없어요");if(state=="error")TextButton(onClick={action("retryBlock:"+n.optString("id"))}){Text("다시 시도")}}
+            }else when(type){
+                "rectangle","ellipse","line","path","polygon","star","boolean"->SceneVector(n)
+                "image"->SceneImage(n)
+                "frame","group","instance"->{val children=n.optJSONArray("children")?.nodes().orEmpty();when(p.optString("layout")){"free"->SceneChildren(children,data,screen,action,p.f("height",180f));"row"->Row(Modifier.fillMaxWidth(),horizontalArrangement=when(p.optString("justify")){"between"->Arrangement.SpaceBetween;"center"->Arrangement.Center;"end"->Arrangement.End;else->Arrangement.spacedBy(p.f("gap",12f).dp)},verticalAlignment=Alignment.CenterVertically){children.forEach{c->SceneNode(c,data,screen,action,if(c.optJSONObject("props")?.optString("widthMode")=="fill")Modifier.weight(1f) else Modifier)}};else->Column(Modifier.fillMaxWidth(),verticalArrangement=Arrangement.spacedBy(p.f("gap",12f).dp)){children.forEach{SceneNode(it,data,screen,action)}}}}
+                "richtext"->Text(n.optString("text"),Modifier.fillMaxWidth(),lineHeight=(p.f("lineHeight",1.5f,1f,3f)*(if(p.has("fontSize"))p.f("fontSize",20f) else 20f)).sp)
+                else->SceneBankBlock(n,data,screen,action)
+            }
+        }
+    }
+}

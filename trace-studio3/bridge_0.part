@@ -1,0 +1,84 @@
+package app.saeon.trace.ui.screens
+
+import android.content.Context
+import android.util.AtomicFile
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.saeon.trace.core.*
+import app.saeon.trace.data.BankPreferences
+import app.saeon.trace.ui.BankViewModel
+import app.saeon.trace.ui.InteractionState
+import app.saeon.trace.ui.design.*
+import dev.trace.scene.*
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import java.io.File
+
+/** A theme never owns the ledger. Only validated local documents are persisted here. */
+class BankDesignStore private constructor(context:Context) {
+    private val file=AtomicFile(File(context.filesDir,"trace-studio-design.json"))
+    private val _document=MutableStateFlow<SceneDocument?>(null)
+    val document:StateFlow<SceneDocument?> = _document.asStateFlow()
+    private var loaded=false
+    suspend fun load()=withContext(Dispatchers.IO){if(!loaded){loaded=true;_document.value=runCatching{if(file.baseFile.exists())SceneDocument.parse(file.openRead().bufferedReader().use{it.readText()})else null}.getOrNull()}}
+    suspend fun apply(raw:String)=withContext(Dispatchers.IO){
+        val parsed=SceneDocument.parse(raw)
+        for(id in listOf("home","assets","recipient","amount","review","hold","verify","unknown","route"))parsed.page(id)
+        val stream=file.startWrite()
+        try{stream.write(parsed.toJson().toByteArray(Charsets.UTF_8));file.finishWrite(stream)}catch(e:Exception){file.failWrite(stream);throw e}
+        loaded=true;_document.value=parsed
+    }
+    suspend fun clear()=withContext(Dispatchers.IO){file.delete();loaded=true;_document.value=null}
+    companion object {
+        @Volatile private var singleton:BankDesignStore?=null
+        fun get(context:Context)=singleton?:synchronized(this){singleton?:BankDesignStore(context.applicationContext).also{singleton=it}}
+    }
+}
+
+@Composable fun StudioDesignScreen(model:BankViewModel,back:()->Unit){
+    val context=LocalContext.current;val store=remember{BankDesignStore.get(context)};val active by store.document.collectAsStateWithLifecycle()
+    val prefs by model.preferences.collectAsStateWithLifecycle();val scope=rememberCoroutineScope()
+    var candidate by remember{mutableStateOf<SceneDocument?>(null)};var selected by remember{mutableStateOf("home")}
+    var notice by remember{mutableStateOf<String?>(null)};var busy by remember{mutableStateOf(false)};var menu by remember{mutableStateOf(false)}
+    val launcher=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()){uri->if(uri!=null){scope.launch{
+        busy=true
+        try{candidate=withContext(Dispatchers.IO){val bytes=context.contentResolver.openInputStream(uri)?.use{source -> val out=java.io.ByteArrayOutputStream();val buf=ByteArray(16384);while(true){val count=source.read(buf);if(count<0)break;require(out.size()+count<=14_000_000){"Project is too large"};out.write(buf,0,count)};out.toByteArray()}?:error("파일을 열지 못했습니다.");require(bytes.size<=14_000_000){"프로젝트는 14MB 이하로 선택하세요."};SceneDocument.parse(bytes.toString(Charsets.UTF_8))};selected="home";notice="미리보기입니다. 적용하기 전에는 은행 화면이나 거래가 바뀌지 않습니다."}
+        catch(_:Exception){notice="프로젝트를 읽지 못했습니다. Trace Studio에서 내보낸 JSON 파일인지 확인하세요. 거래와 잔액은 바뀌지 않았습니다."}
+        finally{busy=false}
+    }}}
+    LaunchedEffect(Unit){store.load();candidate=active}
+    Column(Modifier.fillMaxSize().testTag("studio_design_screen")){
+        Row(Modifier.fillMaxWidth().padding(horizontal=8.dp)){QuietButton("뒤로",onClick=back);TextButton(onClick={launcher.launch(arrayOf("application/json","text/plain","application/octet-stream"))},enabled=!busy,modifier=Modifier.testTag("studio_import")){Text("프로젝트 열기")};TextButton(onClick={scope.launch{candidate=withContext(Dispatchers.IO){SceneDocument.fromAssets(context)};selected="home"}},modifier=Modifier.testTag("studio_example")){Text("예제")}}
+        val doc=candidate
+        if(doc==null) {
+            Column(Modifier.weight(1f).padding(24.dp)){Headline("은행 디자인을\n직접 가져오세요.");Space(18);Body("Trace Studio에서 저장한 프로젝트 JSON을 열어 보세요. 도형·곡선·배치·색상·로고를 네이티브 Compose로 렌더링합니다.");Space(16);Caption("디자인은 송금을 승인하지 않습니다. 적용해도 은행의 원래 거래 정책과 인증을 그대로 거칩니다.")}
+        }else{
+            Row(Modifier.fillMaxWidth().padding(horizontal=16.dp)){
+                Box(Modifier.weight(1f)){TextButton(onClick={menu=true},modifier=Modifier.testTag("studio_page_picker")){Text("화면: ${doc.page(selected).optString("name")}")};DropdownMenu(expanded=menu,onDismissRequest={menu=false}){val pages=doc.root.getJSONArray("screens");repeat(pages.length()){i->val p=pages.getJSONObject(i);DropdownMenuItem(text={Text(p.optString("name"))},onClick={selected=p.getString("id");menu=false},modifier=Modifier.testTag("studio_page_${p.getString("id")}"))}}}
+                TextButton(onClick={model.preference{easy(!prefs.easyMode)}},modifier=Modifier.testTag("studio_senior")){Text(if(prefs.easyMode)"노약자 모드" else "기본 화면")}
+            }
+            val fiction=if(selected in setOf("hold","timeline","guide"))Fixtures.recipient(DemoScenario.IMPERSONATION)else Fixtures.seoyeon
+            TraceScene(doc,selected,SceneData(amount=if(selected=="hold")3_000_000 else 32_000,recipient=fiction.name,bank=fiction.bank,account=fiction.account,
+                items=listOf(SceneItem("모퉁이 카페","체크카드","−5,500원"),SceneItem("9월 급여","입금","+2,840,000원"),SceneItem("이서연","저녁 정산","−32,000원"))),prefs.easyMode,Modifier.weight(1f),showHeader=false){a->
+                if(a=="back")selected="home" else if(a.startsWith("reason:"))selected="timeline"
+                else if(a=="senior:on"||a=="senior:off")model.preference{easy(a=="senior:on")}
+                else if(runCatching{doc.page(a)}.isSuccess)selected=a
+                else notice="디자인 미리보기입니다. 실제 송금은 홈에서 시작해 은행의 인증과 안전 확인을 거쳐야 합니다."
+            }
+        }
+        Column(Modifier.fillMaxWidth().padding(horizontal=20.dp).padding(bottom=10.dp)){
+            if(notice!=null){Caption(notice!!);Space(8)}
+            if(doc!=null)PrimaryButton("은행 화면에 적용",enabled=!busy,modifier=Modifier.testTag("studio_apply")){scope.launch{busy=true;try{store.apply(doc.toJson());notice="적용했습니다. 홈과 송금 화면에서 확인하세요. 거래 정책은 그대로입니다."}catch(_:Exception){notice="저장하지 못했습니다. 기존 거래 상태는 그대로입니다."}finally{busy=false}}}
+            if(active!=null)QuietButton("기본 Trace 디자인으로",Modifier.fillMaxWidth().testTag("studio_clear"),enabled=!busy){scope.launch{store.clear();candidate=null;notice="기본 디자인으로 돌아왔습니다. 거래는 초기화하지 않았습니다."}}
+        }
+    }
+}
+

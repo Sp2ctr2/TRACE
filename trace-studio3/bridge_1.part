@@ -1,0 +1,47 @@
+/** Routes are mapped explicitly; arbitrary document actions cannot approve a held transaction. */
+@Composable fun StudioBankScreen(design:SceneDocument,screenId:String,state:BankState,prefs:BankPreferences,interaction:InteractionState,
+    model:BankViewModel,open:(String)->Unit,back:()->Unit,home:()->Unit){
+    val record=state.current;val draft=state.draft
+    var inputAmount by remember(draft?.recipient?.id){mutableLongStateOf(draft?.amount?:32_000)}
+    var purpose by remember(draft?.recipient?.id){mutableStateOf(draft?.purpose?:Purpose.GENERAL)}
+    var purposeDialog by remember{mutableStateOf(false)}
+    val recipient=if(screenId=="amount")draft?.recipient else record?.intent?.recipient
+    val amount=if(screenId=="amount")inputAmount else record?.intent?.amount?:32_000
+    val error=runCatching{BankEngine.validateAmount(state,amount,if(screenId=="amount")purpose else record?.intent?.purpose?:Purpose.GENERAL,model.repository.clock.now())}.exceptionOrNull()?.message
+    val entries=if(screenId=="recipient")state.recipients.map{SceneItem(it.name,"${it.bank} · ${it.account}",action="payee:${it.id}")}
+        else state.receipts.map{SceneItem(it.recipient.name,it.purpose.label,(if(it.direction==Direction.CREDIT)"+"else"−")+won(it.amount)+"원","receipt/${it.id}")}
+    val reasons=record?.reasons?.sortedBy{it.ordinal}?.map{it.label}.orEmpty()
+    val data=SceneData(amount=amount,balance=state.balance,loan=state.loanBalance,recipient=recipient?.name?:"이서연",bank=recipient?.bank?:"노을은행",account=recipient?.account?:"110-***-7421",
+        purpose=(if(screenId=="amount")purpose else record?.intent?.purpose?:Purpose.SETTLEMENT).label,pending=state.pending.isNotEmpty(),official=record?.intent?.officialRouteId!=null,
+        canSubmit=!interaction.busy&&(screenId !in setOf("amount","review")||error==null),reasons=if(reasons.isEmpty())listOf("현재 거래의 위험 신호를 확인하세요.")else reasons,items=entries)
+    TraceScene(design,screenId,data,prefs.easyMode,onAction={a->
+        when {
+            a=="back" -> back()
+            a=="authorize" -> if(screenId=="review"&&record?.stage==TransferStage.REVIEW)model.requestAuthorization(record.intent.id)
+            a=="cancel" -> if(record!=null&&record.stage !in setOf(TransferStage.COMPLETE,TransferStage.CANCELLED))model.cancelTransfer(record.intent.id,home)
+            a=="resolve" -> if(record?.stage in setOf(TransferStage.VERIFY,TransferStage.UNKNOWN,TransferStage.ROUTE))model.resolveRoute(record!!.intent.id)
+            a=="useRoute" -> if(record?.stage==TransferStage.ROUTE)model.useRoute(record.intent.id)
+            a=="review" -> if(screenId=="amount"&&draft!=null&&error==null)model.review(TransferDraft(draft.recipient,inputAmount,purpose)){open("transfer_state")}
+            a.startsWith("payee:") -> if(screenId=="recipient")state.recipients.find{it.id==a.substringAfter(':')}?.let{r->model.startRecipient(r){open("amount")}}
+            a.startsWith("key:")||a.startsWith("add:") -> if(screenId=="amount"&&draft!=null&&!interaction.busy){val key=a.substringAfter(':');val next=if(a.startsWith("add:"))inputAmount+(key.toLongOrNull()?:0)else when(key){"clear"->0;"delete"->inputAmount/10;else->inputAmount*10+(key.toLongOrNull()?:0)};if(next in 0..100_000_000){inputAmount=next;model.storeDraft(TransferDraft(draft.recipient,next,purpose))}}
+            a=="purpose" -> if(screenId=="amount")purposeDialog=true
+            a=="senior:on"||a=="senior:off" -> model.preference{easy(a=="senior:on")}
+            a.startsWith("reason:") -> open("timeline")
+            a=="recipient" -> open("transfer")
+            a=="guide" -> open("safety_guide")
+            a=="demo" -> open("demo_center")
+            a=="newRecipient" -> open("recipient_entry")
+            a.startsWith("receipt/")&&state.receipts.any{"receipt/${it.id}"==a} -> open(a)
+            a in setOf("home","assets","account","bring","history","savings","loan","card","safety","privacy","accessibility","support","timeline","notifications","manual") -> open(a)
+            else -> model.showError("이 동작은 거래를 실행하지 않습니다. 원래 은행 화면에서 확인하세요.")
+        }
+    })
+    if(purposeDialog)AlertDialog(onDismissRequest={purposeDialog=false},title={Text("어떤 돈인가요?")},text={Column{Purpose.entries.forEach{p->TextButton(onClick={purpose=p;draft?.let{model.storeDraft(TransferDraft(it.recipient,inputAmount,p))};purposeDialog=false}){Text(p.label)}}}},confirmButton={TextButton(onClick={purposeDialog=false}){Text("닫기")}})
+}
+
+@Composable fun StudioTransferScreen(design:SceneDocument,state:BankState,prefs:BankPreferences,interaction:InteractionState,
+    model:BankViewModel,open:(String)->Unit,back:()->Unit,home:()->Unit){
+    val id=when(state.current?.stage){TransferStage.REVIEW,TransferStage.AUTHORIZING->"review";TransferStage.HOLD->"hold";TransferStage.VERIFY->"verify";TransferStage.UNKNOWN->"unknown";TransferStage.ROUTE->"route";else->null}
+    if(id==null)QuietTransfer(state,prefs,interaction,model,open,back,home)
+    else StudioBankScreen(design,id,state,prefs,interaction,model,open,back,home)
+}

@@ -1,0 +1,124 @@
+package dev.trace.scene
+
+import android.content.Context
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.*
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.Locale
+import kotlin.math.*
+
+/** Design is data. This module does not authenticate, attest, execute or release transactions. */
+data class SceneItem(val title:String,val subtitle:String="",val value:String="",val action:String="")
+data class SceneData(
+    val amount:Long=32_000,val balance:Long=12_840_000,val loan:Long=8_000_000,
+    val recipient:String="이서연",val bank:String="노을은행",val account:String="110-***-7421",
+    val purpose:String="정산",val pending:Boolean=false,val official:Boolean=false,
+    val state:String="content",val canSubmit:Boolean=true,val blockStates:Map<String,String> = emptyMap(),
+    val reasons:List<String> = listOf("기관 사칭 정황","즉시 송금 요구","새로운 수취인"),
+    val items:List<SceneItem> = emptyList()
+)
+class SceneDocument private constructor(val root:JSONObject) {
+    val brand:JSONObject get()=root.getJSONObject("brand")
+    val tokens:JSONObject get()=root.getJSONObject("tokens")
+    val name:String get()=brand.optString("name","Trace")
+    fun color(key:String,fallback:String)=colorValue(tokens.optString(key),fallback)
+    fun token(key:String,fallback:Int,min:Int=0,max:Int=100)=tokens.optInt(key,fallback).coerceIn(min,max)
+    fun page(id:String):JSONObject {
+        val pages=root.getJSONArray("screens")
+        return (0 until pages.length()).map{pages.getJSONObject(it)}.firstOrNull{it.optString("id")==id}
+            ?:throw IllegalArgumentException("Unknown screen: $id")
+    }
+    fun toJson()=root.toString()
+    fun withPage(rawPage:String):SceneDocument {
+        val copy=JSONObject(root.toString());val page=JSONObject(rawPage);val pages=copy.getJSONArray("screens")
+        repeat(pages.length()){i->if(pages.getJSONObject(i).optString("id")==page.optString("id"))pages.put(i,page)}
+        return parse(copy.toString())
+    }
+    companion object {
+        val mandatory=mapOf("hold" to listOf("reassurance","transaction","reasons"),"verify" to listOf("reassurance","transaction","reasons"),"warn" to listOf("reassurance","transaction"),"unknown" to listOf("reassurance","transaction"),"route" to listOf("reassurance","route"))
+        fun safeAction(page:String,proposed:String)=when(page){"hold"->"guide";"verify","unknown"->"resolve";"warn"->"warnCheck";"route"->"useRoute";"review"->"authorize";else->proposed}
+        fun safeSecondary(page:String,proposed:String?)=if(page in setOf("hold","verify","warn","unknown"))"cancel" else proposed
+        fun fromAssets(context:Context,path:String="trace/design.json")=context.assets.open(path).bufferedReader().use{parse(it.readText())}
+        fun parse(raw:String):SceneDocument {
+            require(raw.length<=14_000_000){"Project is too large"};val r=JSONObject(raw)
+            require(r.optString("schema") in setOf("trace.studio/1","trace.studio/3")){"Unsupported schema"}
+            require(r.has("brand")&&r.has("tokens"));val pages=r.getJSONArray("screens");require(pages.length() in 1..60)
+            var count=0;val ids=mutableSetOf<String>();val pagesSeen=mutableSetOf<String>()
+            fun checkNodes(arr:JSONArray,depth:Int){require(depth<=12&&arr.length()<=300);repeat(arr.length()){i->
+                require(++count<=1800);val n=arr.getJSONObject(i);require(ids.add(n.getString("id"))){"Duplicate layer ID"}
+                require(n.optString("text").length<=8000);n.optJSONArray("children")?.let{checkNodes(it,depth+1)}
+                val im=n.optJSONObject("props")?.optString("image").orEmpty();require(im.length<3_000_000)
+            }}
+            repeat(pages.length()){val p=pages.getJSONObject(it);val id=p.getString("id");require(id.matches(Regex("[a-zA-Z][a-zA-Z0-9_]{0,49}"))&&pagesSeen.add(id));checkNodes(p.getJSONArray("blocks"),0)}
+            for(id in listOf("home","hold","verify","unknown","route","review"))require(id in pagesSeen)
+            return SceneDocument(r)
+        }
+        fun colorValue(v:String?,fallback:String):Color=Color(android.graphics.Color.parseColor(if(v?.matches(Regex("#[a-fA-F0-9]{6}"))==true)v else fallback))
+    }
+}
+private fun JSONObject.f(key:String,default:Float=0f,min:Float=-5000f,max:Float=5000f)=optDouble(key,default.toDouble()).toFloat().let{if(it.isFinite())it.coerceIn(min,max) else default}
+private fun JSONArray.nodes()=(0 until length()).map{getJSONObject(it)}
+private fun money(n:Long)=String.format(Locale.KOREA,"%,d원",n)
+private val LocalDocument=staticCompositionLocalOf<SceneDocument>{error("SceneDocument missing")}
+private val LocalSceneSenior=staticCompositionLocalOf{false}
+
+@Composable fun TraceScene(document:SceneDocument,screenId:String,data:SceneData,senior:Boolean=false,modifier:Modifier=Modifier,showHeader:Boolean=true,onAction:(String)->Unit){
+    val page=remember(document,screenId){document.page(screenId)}
+    val primary=document.color("primary","#D93B25");val bg=document.color("background","#FBFAF7");val ink=document.color("ink","#20211F")
+    val body=if(senior)20 else document.token("bodySize",16,14,22);val pad=document.token("padding",24,12,36)
+    val blocks=remember(page){page.getJSONArray("blocks").nodes().toMutableList().also{list->SceneDocument.mandatory[screenId].orEmpty().forEach{type->val node=list.find{it.optString("type")==type};if(node==null)list.add(JSONObject().put("id","protected_$type").put("type",type)) else node.put("visible",true)}}}
+    val footer=page.optJSONObject("footer");val family=when(document.tokens.optString("font")){"serif"->FontFamily.Serif;else->MaterialTheme.typography.bodyLarge.fontFamily?:FontFamily.SansSerif}
+    CompositionLocalProvider(LocalDocument provides document,LocalSceneSenior provides senior,LocalTextStyle provides MaterialTheme.typography.bodyLarge.copy(fontFamily=family,fontSize=body.sp,lineHeight=(body*1.5).sp,color=ink)){
+        Surface(modifier.fillMaxSize().testTag("studio_native_$screenId"),color=bg,contentColor=ink){
+            Column(Modifier.fillMaxSize()){
+                if(showHeader&&page.optBoolean("showHeader",true)) Row(Modifier.fillMaxWidth().heightIn(min=56.dp).padding(horizontal=16.dp),verticalAlignment=Alignment.CenterVertically){
+                    if(screenId!="home")TextButton(onClick={onAction("back")},modifier=Modifier.sizeIn(minWidth=48.dp,minHeight=48.dp)){Text("‹",fontSize=28.sp,color=ink)}
+                    Text(if(screenId=="home")document.name else page.optString("name",screenId),Modifier.weight(1f),fontSize=if(screenId=="home")23.sp else 16.sp,fontWeight=FontWeight.SemiBold)
+                    if(screenId=="home")TextButton(onClick={onAction("demo")}){Text("시연",fontSize=13.sp,color=document.color("muted","#696B64"))}
+                }
+                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal=pad.dp).padding(top=8.dp,bottom=24.dp)){
+                    SceneChildren(blocks,data,screenId,onAction,minimumHeight=page.f("canvasHeight",0f,0f,5000f))
+                }
+                if(footer!=null||screenId in SceneDocument.mandatory){val primaryAction=SceneDocument.safeAction(screenId,footer?.optString("action","home")?:"home");val secondary=SceneDocument.safeSecondary(screenId,footer?.optString("secondaryAction")?.takeIf{it.isNotBlank()&&it!="null"})
+                    Column(Modifier.fillMaxWidth().padding(horizontal=pad.dp).padding(top=8.dp,bottom=12.dp)){
+                        Button(onClick={onAction(primaryAction)},enabled=data.canSubmit&&data.state=="content",modifier=Modifier.fillMaxWidth().heightIn(min=if(senior)64.dp else document.token("buttonHeight",56,48,76).dp).testTag("scene_primary"),shape=RoundedCornerShape(document.token("buttonRadius",12,0,32).dp),contentPadding=PaddingValues(16.dp),colors=ButtonDefaults.buttonColors(containerColor=if(document.tokens.optString("buttonStyle")=="outline")Color.Transparent else primary,contentColor=if(document.tokens.optString("buttonStyle")=="outline")primary else Color.White),border=if(document.tokens.optString("buttonStyle")=="outline")BorderStroke(1.dp,primary) else null){Text(footer?.optString("primary","안전하게 확인하기")?:"안전하게 확인하기",fontSize=if(senior)20.sp else 16.sp,textAlign=TextAlign.Center)}
+                        if(secondary!=null)TextButton(onClick={onAction(secondary)},Modifier.fillMaxWidth().heightIn(min=if(senior)60.dp else 48.dp).testTag("scene_secondary")){Text(if(secondary=="cancel")"송금 취소" else footer?.optString("secondary","뒤로")?:"뒤로",color=document.color("muted","#696B64"),fontSize=if(senior)17.sp else 13.sp)}
+                    }
+                }
+            }
+        }
+    }
+}
+@Composable private fun SceneChildren(nodes:List<JSONObject>,data:SceneData,screen:String,action:(String)->Unit,minimumHeight:Float=0f){
+    val visible=nodes.filter{it.optBoolean("visible",true)||it.optString("type") in SceneDocument.mandatory[screen].orEmpty()}
+    val absolute=visible.filter{it.optJSONObject("props")?.optString("position")=="absolute"&&it.optString("type") !in SceneDocument.mandatory[screen].orEmpty()}
+    val flow=visible-absolute.toSet();val minH=maxOf(minimumHeight,absolute.maxOfOrNull{val p=it.optJSONObject("props")?:JSONObject();p.f("y")+p.f("height",100f)}?:0f).coerceIn(0f,5000f)
+    Box(Modifier.fillMaxWidth().heightIn(min=minH.dp)){
+        // Free decoration is below financial content. It never occludes required risk information.
+        absolute.forEach{n->val p=n.optJSONObject("props")?:JSONObject();SceneNode(n,data,screen,action,Modifier.offset(p.f("x").dp,p.f("y").dp))}
+        Column(Modifier.fillMaxWidth()){flow.forEach{SceneNode(it,data,screen,action)}}
+    }
+}

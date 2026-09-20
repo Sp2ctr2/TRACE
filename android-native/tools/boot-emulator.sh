@@ -6,7 +6,6 @@ LOG="$ROOT/verification/logs"
 mkdir -p "$LOG"
 export ANDROID_SDK_ROOT="$SDK"
 export PATH="$SDK/platform-tools:$SDK/emulator:$SDK/cmdline-tools/latest/bin:$PATH"
-# Exports in this shell do not survive the next GitHub Actions step.
 if [ -n "${GITHUB_PATH:-}" ]; then
   printf '%s\n' "$SDK/platform-tools" "$SDK/emulator" "$SDK/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 fi
@@ -20,8 +19,6 @@ retry_install() {
   done
   return 1
 }
-# Headless QEMU still dynamically links the audio/X11 libraries. A missing
-# libpulse.so.0 used to terminate `emulator -version` before any test ran.
 if [ "${GITHUB_ACTIONS:-false}" = true ]; then
   sudo apt-get update -qq
   sudo apt-get install -y --no-install-recommends libpulse0 libnss3 libx11-6 libxcb1 libxcomposite1 libxcursor1 libxi6 libxtst6 libxrandr2 libxkbcommon0 libasound2t64 libegl1 libgl1
@@ -30,11 +27,11 @@ if [ ! -x "$SDK/platform-tools/adb" ]; then retry_install 'platform-tools'; fi
 if [ ! -x "$SDK/emulator/emulator" ]; then retry_install 'emulator'; fi
 if [ ! -f "$SDK/system-images/android-35/google_apis/x86_64/system.img" ]; then retry_install "$IMAGE"; fi
 adb version | tee "$LOG/adb-version.txt"
-ldd "$SDK/emulator/qemu/linux-x86_64/qemu-system-x86_64" > "$LOG/emulator-libraries.txt" 2>&1 || true
-if grep -q 'not found' "$LOG/emulator-libraries.txt"; then
-  cat "$LOG/emulator-libraries.txt" >&2
-  exit 1
-fi
+# The launcher sets the search path for its bundled Qt/Android libraries.
+# Running ldd on the child QEMU without that path reports false missing libs.
+# Keep ldd as a diagnostic, not as the executable-health gate.
+LD_LIBRARY_PATH="$SDK/emulator/lib64:$SDK/emulator/lib64/qt/lib:$SDK/emulator/lib64/gles_swiftshader${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+  ldd "$SDK/emulator/qemu/linux-x86_64/qemu-system-x86_64" > "$LOG/emulator-libraries.txt" 2>&1 || true
 if ! emulator -version > "$LOG/emulator-version.txt" 2>&1; then
   cat "$LOG/emulator-version.txt" >&2
   exit 1
@@ -46,9 +43,9 @@ hw.ramSize=4096
 vm.heapSize=512
 hw.keyboard=yes
 hw.gpu.enabled=yes
-hw.gpu.mode=swiftshader_indirect
+hw.gpu.mode=swiftshader
 AVD
-nohup emulator -avd saeon35 -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none > "$LOG/emulator-boot.txt" 2>&1 &
+nohup emulator -avd saeon35 -no-window -gpu swiftshader -feature -Vulkan -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none > "$LOG/emulator-boot.txt" 2>&1 &
 echo "$!" > "$LOG/emulator.pid"
 if ! timeout 180 adb wait-for-device; then cat "$LOG/emulator-boot.txt" >&2; exit 1; fi
 booted=false

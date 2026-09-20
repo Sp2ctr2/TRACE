@@ -1,0 +1,94 @@
+name: Trace Studio 2 native SDK
+on:
+  push:
+    branches: [android/saeon-reference-20260920]
+    paths: ['studio2-sdk/**', '.github/workflows/studio2-sdk.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: studio2-sdk-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unpack exact exported source fixture
+        run: python studio2-sdk/prepare.py
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Compile SDK and every generated Kotlin page
+        run: |
+          set -o pipefail
+          mkdir -p studio-sdk-evidence
+          cd studio-sdk-project
+          gradle --no-daemon --console=plain :app:assembleDebug :app:assembleDebugAndroidTest :trace-ui:assembleRelease :app:lintDebug 2>&1 | tee ../studio-sdk-evidence/build.log
+          cp app/build/outputs/apk/debug/*.apk ../studio-sdk-evidence/example.apk
+          cp app/build/outputs/apk/androidTest/debug/*.apk ../studio-sdk-evidence/test.apk
+          cp trace-ui/build/outputs/aar/*release.aar ../studio-sdk-evidence/trace-ui-release.aar
+          printf 'commit=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > ../studio-sdk-evidence/provenance.txt
+          zip -qr ../studio-sdk-evidence/exported-source.zip . -x '*/build/*' '.gradle/*' '.kotlin/*' 'local.properties'
+          sha256sum ../studio-sdk-evidence/* > ../studio-sdk-evidence/SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: studio2-sdk-build
+          path: |
+            studio-sdk-evidence/
+            studio-sdk-project/app/build/reports/
+  device:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v4
+        with:
+          name: studio2-sdk-build
+          path: artifact-input
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/system-images/android-35/google_apis/x86_64
+          key: saeon-api35-google-apis-x86-64-v1
+      - name: Boot Android 15
+        timeout-minutes: 15
+        run: bash android-native/tools/boot-emulator.sh
+      - name: Exercise scene, loading, vectors, import boundary and protected actions
+        run: |
+          set -o pipefail
+          mkdir -p sdk-device
+          adb install -r artifact-input/studio-sdk-evidence/example.apk
+          adb install -r artifact-input/studio-sdk-evidence/test.apk
+          adb shell am instrument -w -r trace.example.bank.test/androidx.test.runner.AndroidJUnitRunner | tee sdk-device/instrumentation.txt
+          grep -Eq 'OK \([0-9]+ tests\)' sdk-device/instrumentation.txt
+          adb pull /sdcard/Android/data/trace.example.bank/files/sdk-screens sdk-device/screens
+          adb shell am start -W trace.example.bank/trace.example.MainActivity > sdk-device/cold-start.txt
+          adb logcat -d -b crash > sdk-device/crash.txt
+      - name: Collect partial device evidence
+        if: always()
+        run: |
+          mkdir -p sdk-device
+          adb pull /sdcard/Android/data/trace.example.bank/files/sdk-screens sdk-device/screens || true
+          adb logcat -d -b crash > sdk-device/crash.txt || true
+          adb emu kill || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: studio2-sdk-device
+          path: sdk-device/

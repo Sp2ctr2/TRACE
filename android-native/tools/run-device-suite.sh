@@ -38,6 +38,13 @@ adb shell settings put system user_rotation 0
 adb shell settings put global airplane_mode_on 1
 adb shell svc wifi disable
 adb shell svc data disable
+# Headless API-35 Google images can surface an unrelated Pixel Launcher ANR
+# after wm-size changes. Suppress system crash/ANR dialogs in CI; app crashes
+# remain observable through instrumentation and the crash log buffer.
+adb shell settings put global hide_error_dialogs 1 || true
+adb shell settings put global show_first_crash_dialog 0 || true
+adb shell settings put global anr_show_background 0 || true
+adb shell am force-stop com.google.android.apps.nexuslauncher || true
 adb shell settings put secure show_ime_with_hard_keyboard 1
 adb shell wm density 320
 adb shell wm size 786x1746

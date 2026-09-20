@@ -16,7 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Apply reproducible native source migration
-        run: python trace-studio-native/upgrade.py android-native
+        run: |
+          python trace-studio-native/upgrade.py android-native
+          python trace-studio-native/stabilize.py android-native
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -52,7 +54,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Apply the same test and reporting migration
-        run: python trace-studio-native/upgrade.py android-native
+        run: |
+          python trace-studio-native/upgrade.py android-native
+          python trace-studio-native/stabilize.py android-native
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

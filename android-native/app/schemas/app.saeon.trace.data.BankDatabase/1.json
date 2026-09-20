@@ -1,0 +1,25 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "6f3ac1469b3848cc031dba67b4b263dc",
+    "entities": [
+      {
+        "tableName": "bank_snapshot",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `payload` TEXT NOT NULL, `checksum` TEXT NOT NULL, `revision` INTEGER NOT NULL, `storedAtWall` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {"fieldPath": "id", "columnName": "id", "affinity": "INTEGER", "notNull": true},
+          {"fieldPath": "payload", "columnName": "payload", "affinity": "TEXT", "notNull": true},
+          {"fieldPath": "checksum", "columnName": "checksum", "affinity": "TEXT", "notNull": true},
+          {"fieldPath": "revision", "columnName": "revision", "affinity": "INTEGER", "notNull": true},
+          {"fieldPath": "storedAtWall", "columnName": "storedAtWall", "affinity": "INTEGER", "notNull": true}
+        ],
+        "primaryKey": {"autoGenerate": false, "columnNames": ["id"]}
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6f3ac1469b3848cc031dba67b4b263dc')"
+    ]
+  }
+}

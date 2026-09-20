@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
-"""Black-box UI checks for the exact optimized APK, not an instrumentation build.
-No test hooks, source-class access, bank-state mutation or generated screenshots.
-All scenarios are selected through the app's visible Demo Lab controls.
-"""
+"""Black-box checks for the exact optimized APK, without app test hooks."""
 from pathlib import Path
 import hashlib
 import json
@@ -23,7 +20,8 @@ activity = package + '/app.saeon.trace.MainActivity'
 apk = source / 'saeon-trace-release-demo.apk'
 results = {'source_commit': (source / 'COMMIT.txt').read_text().strip(),
            'apk_sha256': hashlib.sha256(apk.read_bytes()).hexdigest(),
-           'variant': 'R8-optimized release demo; development signing', 'checks': [], 'passed': False}
+           'variant': 'R8-optimized release demo; development signing',
+           'checks': [], 'environment_events': [], 'passed': False}
 log = []
 
 def adb(*args, binary=False, timeout=40):
@@ -34,21 +32,39 @@ def adb(*args, binary=False, timeout=40):
 
 def norm(s): return ' '.join(s.split())
 
+def bounds(node):
+    values = list(map(int, re.findall(r'\d+', node.get('bounds', ''))))
+    return values if len(values) == 4 else (0, 0, 0, 0)
+
 def dump():
-    for attempt in range(3):
+    for attempt in range(5):
         try:
             adb('shell', 'uiautomator', 'dump', '/sdcard/saeon-release-window.xml', timeout=25)
             xml = adb('exec-out', 'cat', '/sdcard/saeon-release-window.xml')
             root = ET.fromstring(xml)
             (out / 'latest.xml').write_text(xml)
+            # API-35 Pixel Launcher can ANR during first-boot wm-size changes.
+            # Recover ONLY that named third-party system launcher. Never dismiss
+            # SAEON, System UI or an unidentified crash/ANR, and retain evidence.
+            launcher = any(n.get('text') == "Pixel Launcher isn't responding" for n in root.iter('node'))
+            if launcher:
+                count = len(results['environment_events'])
+                if count >= 2: raise AssertionError('Repeated Pixel Launcher ANR; environment is unstable')
+                close = next((n for n in root.iter('node') if n.get('resource-id') == 'android:id/aerr_close'), None)
+                if close is None: raise AssertionError('Cannot identify launcher-only ANR close control')
+                name = f'environment_pixel_launcher_anr_{count+1}'
+                (out/(name+'.xml')).write_text(xml)
+                (out/(name+'.png')).write_bytes(adb('exec-out','screencap','-p',binary=True))
+                results['environment_events'].append({'event':'Pixel Launcher ANR after emulator resize', 'action':'closed only the launcher dialog', 'evidence':name})
+                x1,y1,x2,y2 = bounds(close)
+                adb('shell','input','tap',(x1+x2)//2,(y1+y2)//2)
+                time.sleep(1)
+                continue
             return root
         except (RuntimeError, ET.ParseError, subprocess.TimeoutExpired):
-            if attempt == 2: raise
+            if attempt == 4: raise
             time.sleep(1)
-
-def bounds(node):
-    values = list(map(int, re.findall(r'\d+', node.get('bounds', ''))))
-    return values if len(values) == 4 else (0, 0, 0, 0)
+    raise AssertionError('No stable Android accessibility hierarchy')
 
 def matches(root, text, contains=False):
     wanted = norm(text)
@@ -77,8 +93,7 @@ def tap(text, contains=False, scroll=False):
             x1,y1,x2,y2=bounds(n)
             adb('shell','input','tap',(x1+x2)//2,(y1+y2)//2)
             log.append('Tap: '+text); time.sleep(.35); return
-        if scroll:
-            adb('shell','input','swipe',393,1300,393,550,400)
+        if scroll: adb('shell','input','swipe',393,1300,393,550,400)
         time.sleep(.5)
     raise AssertionError('Control not found: '+text)
 

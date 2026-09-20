@@ -84,6 +84,9 @@ class BankRepository(
         }
     }
     suspend fun setDraft(draft: TransferDraft) = change { state, _ -> state.copy(draft = draft) }
+    // The submitted form is the transaction boundary. A queued draft autosave
+    // cannot replace the amount/payee between two separate database writes.
+    suspend fun review(draft: TransferDraft): BankState = change { state, now -> BankEngine.review(state, draft, now) }
     suspend fun reviewDraft(): BankState = change { state, now ->
         val draft = state.draft ?: throw BankFailure("RECIPIENT_MISSING", "받는 분을 먼저 선택해 주세요. 아직 돈은 나가지 않았습니다.")
         BankEngine.review(state, draft, now)

@@ -54,11 +54,10 @@ adb shell wm density > verification/logs/baseline-density.txt
 adb shell dumpsys package "$PACKAGE" > verification/logs/package.txt
 run_test() {
   local name="$1" classes="$2"
-  adb shell am instrument -w -r -e class "$classes" -e pass "$name" "$RUNNER" | tee "verification/logs/$name.txt"
-  grep -Eq '^OK \([0-9]+ tests?\)' "verification/logs/$name.txt"
-  ! grep -q 'FAILURES!!!' "verification/logs/$name.txt"
+  if ! adb shell am instrument -w -r -e class "$classes" -e pass "$name" "$RUNNER" | tee "verification/logs/$name.txt"; then return 1; fi
+  grep -Eq '^OK \([0-9]+ tests?\)' "verification/logs/$name.txt" && ! grep -q 'FAILURES!!!' "verification/logs/$name.txt"
 }
-SUITE=app.saeon.trace.RepositoryDeviceTest,app.saeon.trace.BankUiFlowTest,app.saeon.trace.GoldenScreensTest
+SUITE=app.saeon.trace.RepositoryDeviceTest,app.saeon.trace.BankUiFlowTest,app.saeon.trace.ViewModelBoundaryTest,app.saeon.trace.AuditMeasurementTest,app.saeon.trace.GoldenScreensTest
 for pass in pass-1 pass-2; do
   run_test "$pass" "$SUITE"
   run_test "$pass-seed" app.saeon.trace.SeedHoldProcessTest
@@ -67,24 +66,26 @@ for pass in pass-1 pass-2; do
   run_test "$pass-restore" app.saeon.trace.RestoreHoldProcessTest
   touch "verification/$pass.passed"
 done
+# Collect every configuration before rejecting any failed layout audit.
+# The summary still requires every run to pass.
 for dimensions in 720x1600 786x1746 824x1830; do
   for scale in 1.0 1.15 1.3 1.5 2.0; do
     adb shell am force-stop "$PACKAGE"
     adb shell wm size "$dimensions"
     adb shell settings put system font_scale "$scale"
-    run_test "matrix-${dimensions}-${scale}" app.saeon.trace.LayoutMatrixTest
+    run_test "matrix-${dimensions}-${scale}" app.saeon.trace.LayoutMatrixTest || echo "Layout matrix failure recorded: $dimensions / $scale" >&2
   done
 done
 for scale in 1.0 2.0; do
   adb shell am force-stop "$PACKAGE"
   adb shell wm size 1600x720
   adb shell settings put system font_scale "$scale"
-  run_test "matrix-landscape-${scale}" app.saeon.trace.LayoutMatrixTest
+  run_test "matrix-landscape-${scale}" app.saeon.trace.LayoutMatrixTest || echo "Landscape failure recorded: $scale" >&2
 done
 adb shell settings put system font_scale 1.0
 adb shell wm size 786x1746
 adb shell cmd uimode night yes
-run_test dark-system-forced-light app.saeon.trace.LayoutMatrixTest
+run_test dark-system-forced-light app.saeon.trace.LayoutMatrixTest || echo "Forced-light failure recorded" >&2
 adb shell cmd uimode night no
 collect
 python3 tools/summarize-verification.py

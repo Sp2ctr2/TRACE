@@ -52,8 +52,7 @@ class BankViewModel(application: Application) : AndroidViewModel(application) {
         done()
     }
     fun review(draft: TransferDraft, done: () -> Unit) = act {
-        repository.setDraft(draft)
-        repository.reviewDraft()
+        repository.review(draft)
         done()
     }
     fun editReview(id: String, done: () -> Unit) = act { repository.editReview(id); done() }

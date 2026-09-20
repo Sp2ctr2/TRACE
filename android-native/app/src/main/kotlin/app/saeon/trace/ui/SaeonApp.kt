@@ -93,7 +93,10 @@ fun SaeonApp(
                         composable("timeline") { TimelineScreen(state, back) }
                         composable("safety_guide") { SafetyGuideScreen(state, open, back) }
                         composable("privacy") { PrivacyScreen(state, model, back) }
-                        composable("manual") { ManualCheckScreen(safety, open, { safety.clear(); back() }, onVoice, onStopVoice, voiceActive) }
+                        composable("manual") {
+                            DisposableEffect(Unit) { onDispose { onStopVoice() } }
+                            ManualCheckScreen(safety, open, { onStopVoice(); safety.clear(); back() }, onVoice, onStopVoice, voiceActive)
+                        }
                         composable("more") { MoreScreen(open) }
                         composable("profile") { ProfileScreen(back) }
                         composable("security") { SecurityScreen(preferences, model, open, back) }

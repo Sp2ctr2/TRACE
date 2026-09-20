@@ -117,6 +117,7 @@ abstract class UiHarness {
     private fun auditLayout(nodes: List<SemanticsNode>, name: String) {
         val minTarget = 48f * context.resources.displayMetrics.density - 1.5f
         val issues = mutableListOf<String>()
+        val measurements = mutableListOf<String>()
         nodes.forEach { node ->
             val visible = node.boundsInRoot.width > 0 && node.boundsInRoot.height > 0
             // A clipped scroll viewport is not the logical size of a touch target.
@@ -129,15 +130,25 @@ abstract class UiHarness {
             if (visible) {
                 val result = mutableListOf<TextLayoutResult>()
                 node.config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(result)
-                result.filter { it.hasVisualOverflow }.forEach {
-                    issues += "Text overflow ${node.id}: ${it.layoutInput.text}\n" +
-                        "size=${it.size}, paragraph=${it.multiParagraph.width}x${it.multiParagraph.height}, " +
-                        "width=${it.didOverflowWidth}, height=${it.didOverflowHeight}, " +
-                        "lines=${it.lineCount}, exceeded=${it.multiParagraph.didExceedMaxLines}, " +
-                        "constraints=${it.layoutInput.constraints}, style=${it.layoutInput.style}"
+                result.forEach { reported ->
+                    val measured = TextBoundsAudit.withinDrawnBounds(reported)
+                    if (reported.hasVisualOverflow || measured.hasVisualOverflow) {
+                        measurements += "${node.id}: ${reported.layoutInput.text}\n" +
+                            "drawn=${reported.size}, semanticsParagraph=${reported.multiParagraph.width}x${reported.multiParagraph.height}, " +
+                            "semanticsOverflow=${reported.hasVisualOverflow}, " +
+                            "bounded=${measured.size}, boundedParagraph=${measured.multiParagraph.width}x${measured.multiParagraph.height}, " +
+                            "boundedOverflow=${measured.hasVisualOverflow}"
+                    }
+                    if (measured.hasVisualOverflow) issues +=
+                        "Text overflow ${node.id}: ${measured.layoutInput.text}\n" +
+                        "size=${measured.size}, paragraph=${measured.multiParagraph.width}x${measured.multiParagraph.height}, " +
+                        "width=${measured.didOverflowWidth}, height=${measured.didOverflowHeight}, " +
+                        "lines=${measured.lineCount}, exceeded=${measured.multiParagraph.didExceedMaxLines}, " +
+                        "constraints=${measured.layoutInput.constraints}, style=${measured.layoutInput.style}"
                 }
             }
         }
+        File(output, "$name.text-measurements.txt").writeText(measurements.joinToString("\n\n"))
         File(output, "$name.audit.txt").writeText(if (issues.isEmpty()) "PASS: visible text layout and 48dp interactive bounds\n" else issues.joinToString("\n"))
         // Capture the remaining golden screens before failing the enclosing test.
         // No failing audit is converted to a pass or omitted from the report.

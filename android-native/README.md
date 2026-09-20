@@ -40,7 +40,7 @@ The verified loan route is 새온은행 대출상환센터 / 새온은행 200-**
 
 ## Architecture
 
-- `core`: pure Kotlin immutable domain models, policy evaluator, bounded local signal extractor, transaction state machine, 35 JVM regression tests.
+- `core`: pure Kotlin immutable domain models, policy evaluator, bounded local signal extractor, transaction state machine, 43 JVM regression tests.
 - `app/ui`: native Compose design system, Navigation Compose destinations, lifecycle-aware StateFlow observation and Android ViewModels. Input state flows into the repository; navigation never authorizes a transaction.
 - `app/data`: Room ledger, explicit versioned JSON snapshot codec, DataStore non-financial preferences and a presentation-date clock that advances with elapsed time.
 - `app/security`: Android Keystore EC P-256 handle, SHA256withECDSA attestation signing, pinned local verifier and deterministic DemoBankGateway.
@@ -56,6 +56,8 @@ An authorization binds the exact transaction, relevant live-context digest, fres
 HOLD, VERIFY, UNKNOWN, ROUTE and cancelled/superseded states are not committable. Only EVALUATING with a matching valid ALLOW attestation can debit. Repeated callbacks for an already completed intent return the existing durable state. Eight simultaneous repository submissions are covered by device tests.
 
 On process restoration, HOLD remains HOLD. Interrupted authorization/evaluation returns to REVIEW with all authorization tokens removed. A committed receipt remains committed and cannot debit again. A storage failure never silently initializes a fresh balance or completes a pending transfer.
+
+A loan-repayment request is preserved as a structured signal independent of the purpose dropdown. Active request-level evidence is not discarded by selecting a different payee. An official route creates a new loan intent; it does not bless the original personal account. The form submitted for review is captured in a single repository transaction, so a delayed draft autosave cannot replace it.
 
 Risk events are eligible for 15 minutes. Expiration removes their influence on a **new** transaction; it never silently releases a previously held transaction. Official route responses expire after five minutes. User authentication expires after two minutes; attestations expire after one minute or sooner when the authorization expires.
 
@@ -86,7 +88,7 @@ Interactive controls use at least 48dp targets. Headings, roles, state descripti
 bash tools/run-device-suite.sh
 ```
 
-The device script runs the repository/UI/golden suite twice, with a separate force-stop/relaunch HOLD check in each pass. It then captures layouts at 360×800dp, 393×873dp and 412×915dp at font scales 1.0/1.15/1.3/1.5/2.0, plus landscape and a system-dark-mode case. PNGs come from Android UiAutomation screenshots, not generated artwork. Visible click bounds and Compose text-overflow results are audited. A missing screenshot or failed test is not counted as a pass.
+The device script runs the repository/UI/golden suite twice, with a separate force-stop/relaunch HOLD check in each pass. It then captures layouts at 360×800dp, 393×873dp and 412×915dp at font scales 1.0/1.15/1.3/1.5/2.0, plus landscape and a system-dark-mode case. PNGs come from Android UiAutomation screenshots, not generated artwork. Visible click bounds and text layouts are audited. Text is remeasured at its actual drawn bounds because the Compose simple-text semantics bridge can reconstruct a wider parent paragraph; negative-control tests still reject real height/width clipping and ellipses. Raw and normalized measurements are retained in the evidence. A missing screenshot or failed test is not counted as a pass.
 
 Only the generated `verification/VERIFICATION.md`, `verification/verification.json`, instrumentation logs, JVM XML results and PNG captures establish which checks actually ran and passed. Test source alone is not evidence of execution.
 

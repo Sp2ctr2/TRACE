@@ -17,6 +17,7 @@ import androidx.biometric.BiometricPrompt
 import androidx.compose.runtime.*
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
 import app.saeon.trace.core.*
@@ -24,6 +25,7 @@ import app.saeon.trace.ui.*
 import app.saeon.trace.ui.design.*
 
 class MainActivity : FragmentActivity() {
+    private companion object { const val SHARED_TEXT_CONSUMED = "app.saeon.trace.SHARED_TEXT_CONSUMED" }
     val model: BankViewModel by viewModels()
     val safetyModel: SafetyViewModel by viewModels()
     var navigation: NavHostController? = null
@@ -52,10 +54,15 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); receiveSharedText(intent) }
     private fun receiveSharedText(incoming: Intent?) {
         if (incoming?.action != Intent.ACTION_SEND || incoming.type != "text/plain") return
+        if (incoming.getBooleanExtra(SHARED_TEXT_CONSUMED, false)) return
         val text = incoming.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString().orEmpty()
         incoming.removeExtra(Intent.EXTRA_TEXT)
         incoming.clipData = null
-        intent = Intent(this, MainActivity::class.java)
+        // Preserve the Activity's launch identity (action/categories/component).
+        // Replacing it broke lifecycle matching after a singleTop share.
+        // The marker also prevents re-consuming an emptied share on recreation.
+        incoming.putExtra(SHARED_TEXT_CONSUMED, true)
+        stopVoice()
         safetyModel.receive(text)
     }
     private fun authenticate(challenge: AuthorizationChallenge) {
@@ -82,6 +89,9 @@ class MainActivity : FragmentActivity() {
         }
     }
     private fun startVoice() {
+        // A permission result can return after navigation or backgrounding.
+        if (navigation?.currentDestination?.route != "manual" ||
+            !lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return
         if (Build.VERSION.SDK_INT < 31 || !SpeechRecognizer.isOnDeviceRecognitionAvailable(this)) {
             safetyModel.showError("이 기기에는 기기 내 음성 인식이 준비되어 있지 않아요. 내용을 직접 입력해 주세요. 음성을 외부 서비스로 보내지 않았습니다.")
             return

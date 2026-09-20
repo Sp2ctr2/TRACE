@@ -103,6 +103,12 @@ class BankViewModel(application: Application) : AndroidViewModel(application) {
         _interaction.update { it.copy(authChallenge = null) }
         done()
     }
+    fun startDemo(scenario: DemoScenario, done: () -> Unit) = act {
+        repository.reset(scenario)
+        if (scenario == DemoScenario.EASY) graph.preferences.readingMode(ReadingMode.LARGE)
+        _interaction.update { it.copy(authChallenge = null) }
+        done()
+    }
     fun retryStorage() = act { repository.initialize() }
     fun preference(action: suspend Preferences.() -> Unit) {
         viewModelScope.launch {

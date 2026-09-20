@@ -11,22 +11,18 @@ import androidx.compose.ui.text.style.Hyphens
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.unit.sp
 
-/**
- * TRACE website-derived warm editorial palette.
- * Coral is intentionally not the default banking action color: normal banking
- * stays quiet/ink-first, while TRACE intervention earns coral emphasis.
- */
+/** One warm-light canvas; canonical TRACE coral is reserved for the primary action. */
 object TraceColors {
     val Paper = Color(0xFFF5F4F0)
     val Surface = Color(0xFFFBFAF7)
-    val SurfaceRaised = Color(0xFFFFFFFF)
+    val SurfaceRaised = Surface
     val Soft = Color(0xFFEEEDE7)
     val SoftStrong = Color(0xFFE8E6DE)
     val Ink = Color(0xFF20211F)
     val InkSoft = Color(0xFF43443F)
     val Muted = Color(0xFF676960)
     val OriginalMuted = Color(0xFF7D7E77)
-    val Divider = Color(0xFFDDDCD5)
+    val Divider = Color(0xFFDDDDD5)
     val DividerStrong = Color(0xFFC7C6BE)
     val Coral = Color(0xFFEF4A32)
     val Deep = Color(0xFFD93B25)
@@ -61,7 +57,7 @@ fun SaeonTheme(easy: Boolean = false, content: @Composable () -> Unit) {
         displayLarge = editorialType(if (easy) 40 else 38, FontWeight.SemiBold, if (easy) 48 else 44),
         displayMedium = editorialType(if (easy) 36 else 34, FontWeight.SemiBold, if (easy) 44 else 40),
         displaySmall = editorialType(if (easy) 32 else 30, FontWeight.SemiBold, if (easy) 40 else 36),
-        headlineLarge = editorialType(if (easy) 31 else 28, FontWeight.SemiBold, if (easy) 41 else 37),
+        headlineLarge = editorialType(if (easy) 31 else 28, FontWeight.Bold, if (easy) 41 else 37),
         headlineMedium = editorialType(if (easy) 28 else 25, FontWeight.SemiBold, if (easy) 38 else 34),
         headlineSmall = editorialType(if (easy) 24 else 22, FontWeight.SemiBold, if (easy) 34 else 31),
         titleLarge = editorialType(if (easy) 23 else 21, FontWeight.SemiBold, if (easy) 33 else 29),
@@ -87,11 +83,11 @@ fun SaeonTheme(easy: Boolean = false, content: @Composable () -> Unit) {
                 onSecondaryContainer = TraceColors.Ink,
                 tertiary = TraceColors.InkSoft,
                 onTertiary = TraceColors.White,
-                background = TraceColors.Paper,
+                background = TraceColors.Surface,
                 onBackground = TraceColors.Ink,
                 surface = TraceColors.Surface,
                 onSurface = TraceColors.Ink,
-                surfaceVariant = TraceColors.Soft,
+                surfaceVariant = TraceColors.Surface,
                 onSurfaceVariant = TraceColors.Muted,
                 outline = TraceColors.InputOutline,
                 outlineVariant = TraceColors.Divider,

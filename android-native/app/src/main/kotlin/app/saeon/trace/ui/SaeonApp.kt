@@ -58,7 +58,7 @@ fun SaeonApp(
     val open: (String) -> Unit = { destination -> nav.navigate(destination) { launchSingleTop = true } }
     val back: () -> Unit = { if (!nav.popBackStack()) nav.navigate("home") { launchSingleTop = true } }
     val home: () -> Unit = { nav.navigate("home") { popUpTo("home") { inclusive = false }; launchSingleTop = true } }
-    Surface(color = TraceColors.Paper, modifier = Modifier.fillMaxSize()) {
+    Surface(color = TraceColors.Surface, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).imePadding()) {
             if (fatal != null) {
                 Page(title = "새온은행", footer = { PrimaryButton("거래 상태 다시 읽기", enabled = !interaction.busy) { model.retryStorage() } }) {
@@ -73,8 +73,8 @@ fun SaeonApp(
                     NavHost(navController = nav, startDestination = "home",
                         enterTransition = { fadeIn(tween(150)) }, exitTransition = { fadeOut(tween(120)) },
                         popEnterTransition = { fadeIn(tween(150)) }, popExitTransition = { fadeOut(tween(120)) }) {
-                        composable("home") { HomeScreen(state, preferences, model, open) }
-                        composable("assets") { AssetsScreen(state, open) }
+                        composable("home") { QuietHome(state, preferences, model, open) }
+                        composable("assets") { QuietAssets(state, open) }
                         composable("account") { AccountScreen(state, open, back) }
                         composable("savings") { SavingsScreen(state, open, back) }
                         composable("card") { CardScreen(state, open, back) }
@@ -84,31 +84,32 @@ fun SaeonApp(
                         composable("receipt/{receiptId}") { target ->
                             ReceiptScreen(state.receipts.find { it.id == target.arguments?.getString("receiptId") }, open, back)
                         }
-                        composable("transfer") { RecipientScreen(state, model, open) }
+                        composable("transfer") { QuietRecipients(state, preferences, model, open) }
                         composable("recipient_entry") { RecipientEntryScreen(state, model, open, back) }
-                        composable("amount") { AmountScreen(state, model, open, back) }
-                        composable("transfer_state") { TransferStateScreen(state, preferences, interaction, model, open, back, home) }
-                        composable("safety") { SafetyScreen(state, model, open) }
+                        composable("amount") { QuietAmount(state, preferences, model, open, back) }
+                        composable("transfer_state") { QuietTransfer(state, preferences, interaction, model, open, back, home) }
+                        composable("safety") { QuietSafety(state, model, open) }
                         composable("pending") { PendingScreen(state, model, open, back) }
                         composable("timeline") { TimelineScreen(state, back) }
-                        composable("safety_guide") { SafetyGuideScreen(state, open, back) }
+                        composable("safety_guide") { QuietGuide(state, preferences, model, open, back) }
                         composable("privacy") { PrivacyScreen(state, model, back) }
                         composable("manual") {
                             DisposableEffect(Unit) { onDispose { onStopVoice() } }
                             ManualCheckScreen(safety, open, { onStopVoice(); safety.clear(); back() }, onVoice, onStopVoice, voiceActive)
                         }
-                        composable("more") { MoreScreen(open) }
+                        composable("more") { QuietMore(open) }
                         composable("profile") { ProfileScreen(back) }
                         composable("security") { SecurityScreen(preferences, model, open, back) }
                         composable("transfer_settings") { TransferSettingsScreen(state, model, open, back) }
                         composable("favorites") { FavoritesScreen(state, model, back) }
                         composable("recurring") { RecurringScreen(state, model, back) }
                         composable("notifications") { NotificationsScreen(state, preferences, model, open, back) }
-                        composable("accessibility") { AccessibilityScreen(preferences, model, back) }
+                        composable("accessibility") { QuietAccessibility(preferences, model, back) }
                         composable("support") { SupportScreen(open, back) }
                         composable("help") { HelpScreen(back) }
                         composable("app_info") { AppInfoScreen(open, back) }
-                        composable("demo_lab") { DemoLabScreen(state, model, home, back) }
+                        composable("demo_center") { DemoCenterScreen(state, model, home, open, back) }
+                        composable("demo_lab") { DemoCenterScreen(state, model, home, open, back) }
                     }
                 }
                 if (route in roots) {
@@ -120,7 +121,7 @@ fun SaeonApp(
                         Triple("safety", "안전", BankIcons.Shield),
                         Triple("more", "전체", BankIcons.More)
                     )
-                    Row(Modifier.fillMaxWidth().background(TraceColors.SurfaceRaised)) {
+                    Row(Modifier.fillMaxWidth().background(TraceColors.Surface)) {
                         tabs.forEach { (destination, label, icon) ->
                             val selected = destination == route
                             Column(

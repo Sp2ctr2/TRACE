@@ -3,6 +3,7 @@ package app.saeon.trace
 import androidx.compose.ui.test.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.saeon.trace.core.*
+import app.saeon.trace.data.ReadingMode
 import kotlinx.coroutines.runBlocking
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -43,6 +44,13 @@ class GoldenScreensTest : UiHarness() {
         evaluated(DemoScenario.NORMAL)
         navigate("history"); capture("21_History")
         navigate("more"); capture("22_Settings")
-        navigate("demo_lab"); capture("23_Demo_Lab")
+        navigate("demo_center"); capture("23_Demo_Lab")
+        tap("demo_IMPERSONATION", scroll = true); capture("24_Demo_Preview")
+        navigate("accessibility"); capture("25_Reading_Modes")
+        evaluated(DemoScenario.IMPERSONATION)
+        runBlocking { graph.preferences.readingMode(ReadingMode.CHILD) }
+        compose.waitUntil(10_000) { compose.activity.model.preferences.value.childMode }
+        compose.waitForIdle(); capture("26_Child_HOLD")
+        navigate("safety_guide"); capture("27_Child_Guide")
     }
 }

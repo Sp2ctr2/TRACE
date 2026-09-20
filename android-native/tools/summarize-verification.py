@@ -23,7 +23,7 @@ golden = ('01_Home 02_Assets 03_Account_Detail 04_Transfer_Recipient 05_Transfer
           '06_Transfer_Review 07_Evaluating 08_Normal_Complete 09_WARN 10_HOLD '
           '11_HOLD_Reason_Sheet 12_Safety_Guide 13_Risk_Timeline 14_VERIFY 15_Official_Route '
           '16_UNKNOWN 17_Safety_Center 18_Shared_Text_Review 19_Privacy 20_Easy_Mode '
-          '21_History 22_Settings 23_Demo_Lab').split()
+          '21_History 22_Settings 23_Demo_Lab 24_Demo_Preview 25_Reading_Modes 26_Child_HOLD 27_Child_Guide').split()
 missing_golden = [f'pass-{n}/{name}{ext}' for n in (1, 2) for name in golden
                   for ext in ('.png', '.audit.txt')
                   if not (root / 'screens' / f'pass-{n}' / f'{name}{ext}').is_file()]

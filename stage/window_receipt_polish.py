@@ -55,4 +55,26 @@ edit(p,'picture("dark_hold");navigate("home");fit("home");picture("dark_home")',
             assertFalse(control.isAppearanceLightStatusBars);assertFalse(control.isAppearanceLightNavigationBars)
         }
         picture("dark_hold");navigate("home");fit("home");Thread.sleep(1200);picture("dark_home")''')
-print('Final visual fixes applied: modal-safe system bars, fixed receipt close, relevant request-pressure timeline.')
+# The gate is a bounded task too, not a decorative scene that may push labels offscreen.
+p=r/'trace-ui/src/main/kotlin/app/saeon/trace/ui/design/TraceMotion.kt'
+edit(p,'        Spacer(Modifier.height((LocalTaskHeight.current.value*.18f).coerceIn(12f,100f).dp))', '''        val compact=LocalTaskHeight.current<550.dp
+        Spacer(Modifier.height(if(compact)12.dp else (LocalTaskHeight.current.value*.18f).coerceIn(12f,100f).dp))''')
+edit(p,'.fillMaxWidth().height(168.dp)', '.fillMaxWidth().height(if(compact)104.dp else 168.dp)')
+edit(p,'.padding(vertical=5.dp),verticalAlignment=Alignment.CenterVertically)', '.padding(vertical=if(compact)2.dp else 5.dp),verticalAlignment=Alignment.CenterVertically)')
+p=r/'app/src/androidTest/kotlin/app/saeon/trace/StageTest.kt'
+s=p.read_text().replace('import androidx.compose.ui.test.*','import androidx.compose.ui.test.*\nimport androidx.activity.compose.setContent\nimport androidx.compose.foundation.layout.*\nimport androidx.compose.ui.Modifier\nimport app.saeon.trace.ui.design.*')
+s=s.replace('class StageTest:UiHarness(){','''class StageTest:UiHarness(){
+    @Test fun checkingComponentFitsAvailableSpace(){
+        fresh()
+        compose.runOnUiThread {
+            compose.activity.setContent {
+                SaeonTheme {
+                    Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) { ContextWeave {} }
+                }
+            }
+        }
+        fit("trace_evaluating");picture("checking_layout")
+    }
+''')
+p.write_text(s)
+print('Final visual fixes: modal-safe system bars, fixed receipt close, relevant timeline and bounded checking scene.')

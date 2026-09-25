@@ -34,6 +34,7 @@ jobs:
           python3 viewport/corrections.py
           python3 stage/apply.py
           python3 stage/presentation_layout.py
+          python3 stage/window_receipt_polish.py
           python3 - <<'PY'
           from pathlib import Path
           p=Path('android-native/app/src/main/kotlin/app/saeon/trace/ui/screens/TransferScreens.kt')

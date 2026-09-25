@@ -65,3 +65,27 @@ edit(p,'class ViewportTest : UiHarness() {','''class ViewportTest : UiHarness() 
 edit(p,'if(requireFit)assertEquals("$name has unnecessary vertical overflow",0f,max,1f)','if(requireFit&&(nodes.isEmpty()||max>1f))overflowFailures.add("$name overflow=$max; measured=${nodes.isNotEmpty()}")')
 edit(p,'assertEquals(normal.recipient,risk.recipient);assertEquals(normal.amount,risk.amount)','assertEquals(normal.recipient,risk.recipient);assertEquals(normal.amount,risk.amount);assertEquals(normal.purpose,risk.purpose)')
 print('Corrected compact home and HOLD without clipping or shrinking touch targets.')
+# Retain 48dp targets and move secondary choices into the reserved header.
+p=u/'screens/ViewportScreens.kt'
+s=p.read_text()
+a=s.index('@Composable fun ViewportRecipient');b=s.index('@Composable fun ViewportAmount',a)
+part=s[a:b]
+part=part.replace('    var query by rememberSaveable', '    val compact=androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp<640\n    var query by rememberSaveable')
+part=part.replace('TaskPage("송금","transfer_recipient",root=true)', 'TaskPage("송금","transfer_recipient",root=true,actions={if(compact)QuietButton("전체 계좌"){open("recipients_all")}})')
+part=part.replace('        MenuRow("계좌번호로 보내기",icon=BankIcons.Bank,tag="recipient_account_entry"){open("recipient_entry")}', '''        if(compact) {
+            Row(Modifier.fillMaxWidth().heightIn(min=48.dp).clickable(role=Role.Button){open("recipient_entry")}.testTag("recipient_account_entry"),verticalAlignment=Alignment.CenterVertically) {
+                AppIcon(BankIcons.Bank,size=20);Text("계좌번호로 보내기",Modifier.weight(1f).padding(start=10.dp),style=MaterialTheme.typography.bodyMedium);AppIcon(BankIcons.Chevron,size=16)
+            }
+        } else MenuRow("계좌번호로 보내기",icon=BankIcons.Bank,tag="recipient_account_entry"){open("recipient_entry")}''')
+part=part.replace('        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {\n            QuietButton("최근"', '        if(compact)Caption("최근",Modifier.padding(vertical=2.dp)) else Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {\n            QuietButton("최근"')
+s=s[:a]+part+s[b:]
+a=s.index('@Composable fun ViewportAmount');b=s.index('@Composable fun ViewportReview',a)
+part=s[a:b]
+part=part.replace('    val draft=state.draft', '    val compact=androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp<640\n    val draft=state.draft')
+part=part.replace('TaskPage("송금 금액","transfer_amount",back=back,footer={', 'TaskPage(if(compact)"${draft.recipient.name}님에게"else"송금 금액","transfer_amount",back=back,actions={if(compact)QuietButton(selected.label,Modifier.testTag("transfer_purpose")){purposeOpen=true}},footer={')
+part=part.replace('        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){\n            Text("${draft.recipient.name}님에게"', '        if(!compact)Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){\n            Text("${draft.recipient.name}님에게"')
+s=s[:a]+part+s[b:]
+s=s.replace('TaskGap(16);Body("이미 알고 있던 연락처나 공식 앱에서 받는 분과 금액을 확인하세요.",subdued=true)', 'TaskGap(16);if(LocalTaskHeight.current>=380.dp)Body("이미 알고 있던 연락처나 공식 앱에서 받는 분과 금액을 확인하세요.",subdued=true)')
+s=s.replace('TaskGap(16);TaskDetail("보내는 목적","대출 상환");TaskDetail("받는 계좌",record.intent.recipient.account)', 'TaskGap(16);if(LocalTaskHeight.current>=380.dp)TaskDetail("보내는 목적","대출 상환");TaskDetail("받는 계좌",record.intent.recipient.account)')
+p.write_text(s)
+print('Resolved measured compact recipient/amount/WARN/VERIFY overflow; all retained controls have normal touch targets.')

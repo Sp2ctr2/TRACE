@@ -24,19 +24,26 @@ jobs:
           packages: 'platform-tools'
           log-accepted-android-sdk-licenses: false
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+          cache-read-only: false
       - name: Apply versioned design overlay
         run: |
-          python3 experience/apply_design.py
-          chmod +x android-native/gradlew android-native/tools/*.sh
           mkdir -p delivery
+          python3 experience/apply_design.py
+          if [ -f experience/fixes.py ]; then python3 experience/fixes.py; fi
+          chmod +x android-native/tools/*.sh
           git rev-parse HEAD > delivery/BUILD_COMMIT.txt
           git diff --binary > delivery/APPLIED_DESIGN.patch
-          cp experience/apply_design.py delivery/
+          cp experience/*.py delivery/
           cd android-native
+          gradle wrapper --gradle-version 8.11.1 --no-daemon
+          chmod +x gradlew
           zip -qr ../delivery/TRACE_Experience_native_source.zip . -x '*/build/*' '.gradle/*' 'local.properties' '.android-user/*' 'verification/*'
       - name: Compile and test
         working-directory: android-native
         run: |
+          set -o pipefail
           ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :trace-ui:assembleRelease --stacktrace --no-daemon 2>&1 | tee ../delivery/BUILD.log
           cp app/build/outputs/apk/debug/app-debug.apk ../delivery/TRACE_Experience_debug.apk
           cp app/build/outputs/apk/release/app-release.apk ../delivery/TRACE_Experience.apk
@@ -77,6 +84,17 @@ jobs:
           adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/experience verification/experience/screens || true
           grep -q 'OK (' verification/experience/INSTRUMENTATION.txt
           ! grep -q 'FAILURES\|INSTRUMENTATION_FAILED\|Process crashed' verification/experience/INSTRUMENTATION.txt
+      - name: Release cold launch
+        working-directory: android-native
+        run: |
+          adb uninstall app.saeon.trace.demo
+          adb install app/build/outputs/apk/release/app-release.apk
+          adb logcat -c
+          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity | tee verification/experience/RELEASE_LAUNCH.txt
+          sleep 4
+          adb exec-out screencap -p > verification/experience/release_launch.png
+          adb logcat -d -s AndroidRuntime:E > verification/experience/RELEASE_ERRORS.txt
+          ! grep -q 'FATAL EXCEPTION' verification/experience/RELEASE_ERRORS.txt
       - name: Archive native evidence
         if: always()
         uses: actions/upload-artifact@v4

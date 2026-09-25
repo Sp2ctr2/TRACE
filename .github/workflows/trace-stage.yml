@@ -2,7 +2,7 @@ name: TRACE Stage
 on:
   push:
     branches: [design/trace-stage-motion-20260925]
-    paths: [stage/**, .github/workflows/trace-stage.yml]
+    paths: [stage/**, android-native/app/src/main/kotlin/app/saeon/trace/ui/StageNavigation.kt, android-native/app/src/main/kotlin/app/saeon/trace/ui/screens/MotionWarn.kt, .github/workflows/trace-stage.yml]
   workflow_dispatch:
 permissions:
   contents: read
@@ -33,6 +33,15 @@ jobs:
           python3 viewport/apply.py
           python3 viewport/corrections.py
           python3 stage/apply.py
+          python3 stage/presentation_layout.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('android-native/app/src/main/kotlin/app/saeon/trace/ui/screens/TransferScreens.kt')
+          s=p.read_text()
+          old='ViewportWarn(record, interaction, model, back, home)'
+          assert old in s
+          p.write_text(s.replace(old,'MotionWarn(state, record, interaction, model, open, back, home)'))
+          PY
           cp -r stage delivery/overlay
           git rev-parse HEAD > delivery/BUILD_COMMIT.txt
           cd android-native
@@ -93,6 +102,8 @@ jobs:
           adb shell settings put global window_animation_scale 1
           adb shell settings put global transition_animation_scale 1
           adb shell settings put global animator_duration_scale 1
+          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity
+          adb shell am force-stop com.google.android.apps.nexuslauncher
           adb shell screenrecord --bit-rate 6000000 --time-limit 180 /sdcard/stage.mp4 &
           recorder=$!
           adb shell am instrument -w -r -e class app.saeon.trace.StageTest -e pass stage app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/INSTRUMENTATION.txt
@@ -100,7 +111,7 @@ jobs:
           wait $recorder || true
           adb pull /sdcard/stage.mp4 evidence/ || true
           adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/stage evidence/screens || true
-          adb logcat -d -s AndroidRuntime:E > evidence/RUNTIME_ERRORS.txt
+          adb logcat -d -s AndroidRuntime:E ActivityManager:E > evidence/RUNTIME_ERRORS.txt
           grep -q 'OK (' evidence/INSTRUMENTATION.txt
           ! grep -q 'FAILURES\|INSTRUMENTATION_FAILED\|Process crashed' evidence/INSTRUMENTATION.txt
       - name: Release start
@@ -110,9 +121,10 @@ jobs:
           adb install delivery/TRACE_Stage.apk
           adb logcat -c
           adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity | tee evidence/RELEASE_LAUNCH.txt
+          adb shell am force-stop com.google.android.apps.nexuslauncher
           sleep 3
           adb exec-out screencap -p > evidence/release_home.png
-          adb logcat -d -s AndroidRuntime:E > evidence/RELEASE_ERRORS.txt
+          adb logcat -d -s AndroidRuntime:E ActivityManager:E > evidence/RELEASE_ERRORS.txt
           ! grep -q 'FATAL EXCEPTION' evidence/RELEASE_ERRORS.txt
       - uses: actions/upload-artifact@v4
         if: always()

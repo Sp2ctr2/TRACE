@@ -27,11 +27,14 @@ jobs:
         with:
           gradle-version: '8.11.1'
           cache-read-only: false
-      - name: Apply versioned design overlay
+      - name: Apply native V3 source
         run: |
           mkdir -p delivery
           python3 experience/apply_design.py
-          if [ -f experience/fixes.py ]; then python3 experience/fixes.py; fi
+          python3 experience/fixes.py
+          python3 experience/redesign_v3.py
+          python3 experience/v3_validation.py
+          if [ -f experience/v3_corrections.py ]; then python3 experience/v3_corrections.py; fi
           chmod +x android-native/tools/*.sh
           git rev-parse HEAD > delivery/BUILD_COMMIT.txt
           git diff --binary > delivery/APPLIED_DESIGN.patch
@@ -39,25 +42,24 @@ jobs:
           cd android-native
           gradle wrapper --gradle-version 8.11.1 --no-daemon
           chmod +x gradlew
-          zip -qr ../delivery/TRACE_Experience_native_source.zip . -x '*/build/*' '.gradle/*' 'local.properties' '.android-user/*' 'verification/*'
-      - name: Compile and test
+          zip -qr ../delivery/TRACE_V3_native_source.zip . -x '*/build/*' '.gradle/*' 'local.properties' '.android-user/*' 'verification/*'
+      - name: Compile and execute unit tests
         working-directory: android-native
         run: |
           set -o pipefail
-          ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :trace-ui:assembleRelease --stacktrace --no-daemon 2>&1 | tee ../delivery/BUILD.log
-          cp app/build/outputs/apk/debug/app-debug.apk ../delivery/TRACE_Experience_debug.apk
-          cp app/build/outputs/apk/release/app-release.apk ../delivery/TRACE_Experience.apk
-          cp trace-ui/build/outputs/aar/trace-ui-release.aar ../delivery/trace-ui.aar
-          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ../delivery/TRACE_Experience_test.apk
-      - name: Save build artifacts immediately
+          ./gradlew :core:cleanTest :core:test :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :trace-ui:assembleRelease --stacktrace --no-daemon 2>&1 | tee ../delivery/BUILD.log
+          cp app/build/outputs/apk/debug/app-debug.apk ../delivery/TRACE_V3_debug.apk
+          cp app/build/outputs/apk/release/app-release.apk ../delivery/TRACE_V3.apk
+          cp trace-ui/build/outputs/aar/trace-ui-release.aar ../delivery/trace-ui-v3.aar
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ../delivery/TRACE_V3_test.apk
+      - name: Save build artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: banking-experience-build
+          name: banking-v3-build
           path: |
             delivery/
             android-native/core/build/test-results/
-            android-native/app/build/test-results/
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -66,38 +68,39 @@ jobs:
       - name: Boot Android 35
         working-directory: android-native
         run: bash tools/boot-emulator.sh
-      - name: Install and exercise native flows
+      - name: Native presentation and gate verification
         working-directory: android-native
         run: |
-          mkdir -p verification/experience
+          mkdir -p verification/v3
           adb install -r app/build/outputs/apk/debug/app-debug.apk
           adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           adb shell settings put global window_animation_scale 1
           adb shell settings put global transition_animation_scale 1
           adb shell settings put global animator_duration_scale 1
-          adb shell screenrecord --bit-rate 5000000 --time-limit 120 /sdcard/experience-motion.mp4 &
+          adb shell screenrecord --bit-rate 6000000 --time-limit 180 /sdcard/v3-motion.mp4 &
           recorder=$!
-          adb shell am instrument -w -r -e class app.saeon.trace.ExperienceTest -e pass experience app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee verification/experience/INSTRUMENTATION.txt
+          adb shell am instrument -w -r -e class app.saeon.trace.RedesignTest -e pass v3 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee verification/v3/INSTRUMENTATION.txt
           adb shell pkill -INT screenrecord || true
           wait $recorder || true
-          adb pull /sdcard/experience-motion.mp4 verification/experience/ || true
-          adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/experience verification/experience/screens || true
-          grep -q 'OK (' verification/experience/INSTRUMENTATION.txt
-          ! grep -q 'FAILURES\|INSTRUMENTATION_FAILED\|Process crashed' verification/experience/INSTRUMENTATION.txt
-      - name: Release cold launch
+          adb pull /sdcard/v3-motion.mp4 verification/v3/ || true
+          adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/v3 verification/v3/screens || true
+          adb logcat -d -s AndroidRuntime:E > verification/v3/RUNTIME_ERRORS.txt
+          grep -q 'OK (' verification/v3/INSTRUMENTATION.txt
+          ! grep -q 'FAILURES\|INSTRUMENTATION_FAILED\|Process crashed' verification/v3/INSTRUMENTATION.txt
+      - name: Optimized APK cold launch
         working-directory: android-native
         run: |
           adb uninstall app.saeon.trace.demo
           adb install app/build/outputs/apk/release/app-release.apk
           adb logcat -c
-          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity | tee verification/experience/RELEASE_LAUNCH.txt
+          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity | tee verification/v3/RELEASE_LAUNCH.txt
           sleep 4
-          adb exec-out screencap -p > verification/experience/release_launch.png
-          adb logcat -d -s AndroidRuntime:E > verification/experience/RELEASE_ERRORS.txt
-          ! grep -q 'FATAL EXCEPTION' verification/experience/RELEASE_ERRORS.txt
+          adb exec-out screencap -p > verification/v3/release_launch.png
+          adb logcat -d -s AndroidRuntime:E > verification/v3/RELEASE_ERRORS.txt
+          ! grep -q 'FATAL EXCEPTION' verification/v3/RELEASE_ERRORS.txt
       - name: Archive native evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: banking-experience-device
+          name: banking-v3-device
           path: android-native/verification/

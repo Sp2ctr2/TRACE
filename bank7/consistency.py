@@ -25,14 +25,17 @@ s=s.replace(a,'''                    if(route in roots && !preferences.reducedTr
                         drawLayer(backdrop)
                     } else drawContent()''');p.write_text(s)
 p=d/'BankExperience.kt';s=p.read_text().replace('        Canvas(Modifier.matchParentSize().graphicsLayer {','        if(!solid && Build.VERSION.SDK_INT>=31)Canvas(Modifier.matchParentSize().graphicsLayer {',1);p.write_text(s)
-# Keep banking actions neutral, but preserve the user's accepted HOLD emphasis.
-# The canonical deep coral with white text exceeds 4.5:1 in the light palette.
 p=d/'Components.kt';s=p.read_text();a=s.index('@Composable fun PrimaryButton');b=s.index('@Composable fun QuietButton',a)
 protection=s[a:b].replace('fun PrimaryButton','fun ProtectionButton').replace('containerColor = TraceColors.Ink, contentColor = TraceColors.Paper','containerColor = TraceColors.Deep, contentColor = TraceColors.White')
-s=s+ '\n'+protection;p.write_text(s)
+s=s+ '\n'+protection
+# The former 480dp cutoff treated a normal portrait keyboard as landscape and
+# put the footer after the complete form. Pin it except in truly unusable height.
+s=s.replace('val compactHeight = maxHeight < 480.dp','val compactHeight = maxHeight < 180.dp')
+s=s.replace('// In landscape or above an IME, a pinned footer must not consume the\n        // entire reading viewport. Keep the complete page scroll-reachable.','// Keep primary form actions above the IME. Only an extremely short\n        // viewport falls back to whole-page scrolling instead of clipping.')
+p.write_text(s)
 p=u/'screens/ViewportScreens.kt';s=p.read_text();a=s.index('@Composable fun ViewportHold');b=s.index('@Composable fun ViewportWarn',a);part=s[a:b].replace('PrimaryButton("공식 경로로 확인하기"','ProtectionButton("공식 경로로 확인하기"');s=s[:a]+part+s[b:];p.write_text(s)
-# Exercise the actual exporter, assert generated content and provider readability,
-# then return from the platform share sheet. This is not merely a button-enabled test.
+p=u/'screens/ServiceScreens.kt';s=p.read_text();s=s.replace('@Composable fun SupportRequestsScreen(back:()->Unit) {','@Composable fun SupportRequestsScreen(back:()->Unit) {\n    val focus=androidx.compose.ui.platform.LocalFocusManager.current\n    val keyboard=androidx.compose.ui.platform.LocalSoftwareKeyboardController.current')
+s=s.replace('store.saveRows("requests",rows);body="";sent=id','store.saveRows("requests",rows);body="";sent=id;focus.clearFocus();keyboard?.hide()');p.write_text(s)
 p=r/'app/src/androidTest/kotlin/app/saeon/trace/Bank7Test.kt';s=p.read_text();a='shot("functional_document")';assert a in s
 s=s.replace(a,a+'''
         tap("document_export");Thread.sleep(700)
@@ -41,5 +44,8 @@ s=s.replace(a,a+'''
         val uri=androidx.core.content.FileProvider.getUriForFile(context,context.packageName+".documents",exported)
         assertTrue(context.contentResolver.openInputStream(uri)!!.use{it.readBytes().isNotEmpty()})
         device.takeScreenshot(File(output,"functional_android_share_sheet.png"));device.pressBack()
-''',1);p.write_text(s)
-print('Reconciled metadata, scoped glass rendering, preserved HOLD coral, and verified actual document sharing.')
+''',1)
+s=s.replace('@RunWith(AndroidJUnit4::class)\nclass Bank7Test','@RunWith(AndroidJUnit4::class)\n@org.junit.FixMethodOrder(org.junit.runners.MethodSorters.NAME_ASCENDING)\nclass Bank7Test')
+s=s.replace('fill("support_body","시연 문의를 저장하고 내역을 확인합니다.");tap("support_save")','fill("support_body","시연 문의를 저장하고 내역을 확인합니다.");Thread.sleep(450);compose.onNodeWithTag("support_save").assertIsDisplayed();shot("functional_support_keyboard");tap("support_save")')
+p.write_text(s)
+print('Reconciled metadata, scoped glass, preserved HOLD coral, verified export, and fixed keyboard footer visibility.')

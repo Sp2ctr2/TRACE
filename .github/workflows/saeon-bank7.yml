@@ -1,0 +1,141 @@
+name: SAEON Bank 7
+on:
+  push:
+    branches: [design/saeon-bank-7-20260927]
+    paths: [bank7/**, .github/workflows/saeon-bank7.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: saeon-bank7
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1', cache-read-only: false}
+      - name: Prepare assembled source
+        run: |
+          mkdir -p delivery
+          python3 experience/apply_design.py
+          python3 experience/fixes.py
+          python3 experience/redesign_v3.py
+          python3 experience/v3_validation.py
+          python3 experience/v3_corrections.py
+          python3 refinement/refine.py
+          python3 viewport/apply.py
+          python3 viewport/corrections.py
+          python3 stage/apply.py
+          python3 stage/presentation_layout.py
+          python3 stage/window_receipt_polish.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('android-native/app/src/main/kotlin/app/saeon/trace/ui/screens/TransferScreens.kt')
+          s=p.read_text().replace('ViewportWarn(record, interaction, model, back, home)','MotionWarn(state, record, interaction, model, open, back, home)')
+          p.write_text(s)
+          PY
+          python3 final/finalize.py
+          python3 bank7/apply.py
+          python3 bank7/fixes.py
+          cp -r bank7 delivery/overlay
+          git rev-parse HEAD > delivery/BUILD_COMMIT.txt
+          cd android-native
+          gradle wrapper --gradle-version 8.11.1 --no-daemon
+          chmod +x gradlew
+          zip -qr ../delivery/SAEON_Bank7_source.zip . -x '*/build/*' '.gradle/*' 'local.properties' '.android-user/*' 'verification/*'
+      - name: Build and execute tests without cache
+        working-directory: android-native
+        run: |
+          set -o pipefail
+          ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :trace-ui:assembleRelease --no-build-cache --no-daemon 2>&1 | tee ../delivery/BUILD.log
+          cp app/build/outputs/apk/release/app-release.apk ../delivery/SAEON_Bank7.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../delivery/debug.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ../delivery/test.apk
+          cp trace-ui/build/outputs/aar/trace-ui-release.aar ../delivery/trace-ui-bank7.aar
+          cp -r core/build/test-results ../delivery/core-tests
+          cp -r app/build/test-results ../delivery/app-tests
+          sha256sum ../delivery/*.apk ../delivery/*.aar > ../delivery/SHA256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: bank7-build, path: delivery/}
+  device:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        screen:
+          - {name: regular, width: 780, height: 1688}
+          - {name: compact, width: 640, height: 1136}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
+      - uses: actions/download-artifact@v4
+        with: {name: bank7-build, path: delivery}
+      - name: Boot exact display size
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('android-native/tools/boot-emulator.sh')
+          s=p.read_text().replace('hw.ramSize=4096','hw.ramSize=4096\nhw.lcd.width=${{ matrix.screen.width }}\nhw.lcd.height=${{ matrix.screen.height }}\nhw.lcd.density=320\nskin.name=${{ matrix.screen.width }}x${{ matrix.screen.height }}\nshowDeviceFrame=no')
+          p.write_text(s)
+          PY
+          bash android-native/tools/boot-emulator.sh
+          mkdir -p evidence
+          adb shell wm size > evidence/display.txt
+          adb shell wm density >> evidence/display.txt
+          adb install -r delivery/debug.apk
+          adb install -r delivery/test.apk
+          adb shell settings put global window_animation_scale 1
+          adb shell settings put global transition_animation_scale 1
+          adb shell settings put global animator_duration_scale 1
+          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity
+          adb shell am force-stop com.google.android.apps.nexuslauncher
+      - name: Run banking interactions and capture all screens
+        run: |
+          adb logcat -c
+          adb shell screenrecord --bit-rate 6000000 --time-limit 180 /sdcard/bank7.mp4 &
+          recorder=$!
+          adb shell am instrument -w -r -e class app.saeon.trace.Bank7Test -e pass bank7 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/INSTRUMENTATION.txt
+          adb shell pkill -INT screenrecord || true
+          wait $recorder || true
+          adb pull /sdcard/bank7.mp4 evidence/ || true
+          adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/bank7 evidence/screens || true
+          adb logcat -d -s AndroidRuntime:E ActivityManager:E > evidence/RUNTIME_ERRORS.txt
+          grep -q 'OK (' evidence/INSTRUMENTATION.txt
+          ! grep -q 'FAILURES\|INSTRUMENTATION_FAILED\|Process crashed' evidence/INSTRUMENTATION.txt
+      - name: Optimized release launch and frame stats
+        if: always()
+        run: |
+          adb uninstall app.saeon.trace.demo || true
+          adb install delivery/SAEON_Bank7.apk
+          adb shell dumpsys gfxinfo app.saeon.trace.demo reset || true
+          adb logcat -c
+          adb shell screenrecord --time-limit 8 /sdcard/launch.mp4 &
+          recorder=$!
+          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity | tee evidence/RELEASE_LAUNCH.txt
+          adb shell am force-stop com.google.android.apps.nexuslauncher
+          sleep 4
+          adb exec-out screencap -p > evidence/release_home.png
+          wait $recorder || true
+          adb pull /sdcard/launch.mp4 evidence/ || true
+          adb shell dumpsys gfxinfo app.saeon.trace.demo framestats > evidence/FRAMESTATS.txt
+          adb logcat -d -s AndroidRuntime:E ActivityManager:E > evidence/RELEASE_ERRORS.txt
+          ! grep -q 'FATAL EXCEPTION' evidence/RELEASE_ERRORS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: 'bank7-device-${{ matrix.screen.name }}', path: evidence/}

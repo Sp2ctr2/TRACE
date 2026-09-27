@@ -21,4 +21,7 @@ p.write_text(s)
 p=r/'app/src/androidTest/kotlin/app/saeon/trace/RefinedTest.kt'
 s=p.read_text().replace('capture(name,audit=false)','capture(name,audit=true)').replace('capture("fit_$tag",audit=false)','capture("fit_$tag",audit=true)')
 p.write_text(s)
-print('Corrected compact registered account composition, contrast and full secondary-screen text/target audits.')
+p=r/'app/src/androidTest/kotlin/app/saeon/trace/UiHarness.kt'
+s=p.read_text().replace('    fun fresh(scenario: DemoScenario = DemoScenario.NORMAL) {','    fun fresh(scenario: DemoScenario = DemoScenario.NORMAL) {\n        device.executeShellCommand("am broadcast -a com.android.systemui.demo -e command exit")\n        device.executeShellCommand("settings put global sysui_demo_on 0")')
+p.write_text(s)
+print('Compact route, dark contrast, all-screen audits and natural emulator status bar capture corrected.')

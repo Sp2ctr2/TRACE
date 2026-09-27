@@ -17,4 +17,7 @@ anchor='    TaskPage("송금 확인","transfer_review",back=back,footer={'
 s=s.replace(anchor,anchor+'\n        if(LocalBankLandscape.current){ LandscapeReviewDetails(tx,true);Space(8) }',1)
 s+='\n@Composable private fun LandscapeReviewDetails(tx:TransactionIntent,compact:Boolean){\n'+block+'}\n'
 p.write_text(s)
-print('Landscape confirmations keep the actual destination and transaction data beside the action.')
+p=r/'app/src/main/kotlin/app/saeon/trace/security/DeviceAuthentication.kt'
+s=p.read_text().replace('if(BiometricManager.from(activity).canAuthenticate(strong)==BiometricManager.BIOMETRIC_SUCCESS)','if(model.preferences.value.biometric && BiometricManager.from(activity).canAuthenticate(strong)==BiometricManager.BIOMETRIC_SUCCESS)')
+p.write_text(s)
+print('Landscape data remains beside actions. Disabled biometric preference uses system screen-lock credentials.')

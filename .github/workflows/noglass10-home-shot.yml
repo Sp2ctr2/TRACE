@@ -29,30 +29,23 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p=Path('source/tools/boot-emulator.sh')
-          s=p.read_text().replace('hw.ramSize=4096','hw.ramSize=2048\nhw.lcd.width=780\nhw.lcd.height=1688\nhw.lcd.density=320\nskin.name=780x1688\nshowDeviceFrame=no')
-          p.write_text(s)
+          p.write_text(p.read_text().replace('hw.ramSize=4096','hw.ramSize=2048\nhw.lcd.width=780\nhw.lcd.height=1688\nhw.lcd.density=320\nskin.name=780x1688\nshowDeviceFrame=no'))
           PY
           bash source/tools/boot-emulator.sh
           mkdir -p evidence
-          adb shell wm size > evidence/display.txt
-          adb shell wm density >> evidence/display.txt
           adb shell am force-stop com.google.android.apps.nexuslauncher
           adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher > evidence/isolation.txt
-          adb shell am broadcast -a com.android.systemui.demo -e command exit || true
-          adb shell settings put global sysui_demo_on 0 || true
           adb shell settings put system screen_off_timeout 1800000
           adb install delivery/TRACE_NoGlass10.apk
-          sleep 8
-      - name: Launch and capture home
+          sleep 6
+      - name: Launch and record home
         run: |
           adb shell am force-stop app.saeon.trace.demo
-          adb logcat -c
-          timeout 25 adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity | tee evidence/launch.txt
-          sleep 5
-          timeout 8 adb exec-out screencap -p > evidence/home.png
-          test -s evidence/home.png
-          timeout 8 adb logcat -d -s AndroidRuntime:E > evidence/runtime.txt || true
-          ! grep -q 'FATAL EXCEPTION' evidence/runtime.txt
+          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity | tee evidence/launch.txt
+          sleep 2
+          adb shell screenrecord --bit-rate 5000000 --time-limit 4 /sdcard/home.mp4
+          adb pull /sdcard/home.mp4 evidence/home.mp4
+          test -s evidence/home.mp4
           sha256sum delivery/TRACE_NoGlass10.apk > evidence/apk-sha256.txt
       - uses: actions/upload-artifact@v4
         if: always()

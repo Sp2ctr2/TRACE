@@ -8,7 +8,7 @@ permissions: {contents: read, actions: read}
 jobs:
   native:
     runs-on: macos-15-intel
-    timeout-minutes: 22
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -22,6 +22,71 @@ jobs:
         with: {distribution: temurin, java-version: '17'}
       - uses: actions/download-artifact@v4
         with: {name: noglass10-build, path: delivery, run-id: 36333268963, github-token: '${{ github.token }}'}
+      - name: Prepare single-command runners
+        run: |
+          mkdir -p evidence
+          cp delivery/BUILD_COMMIT.txt delivery/SHA256.txt evidence/
+          cat > resize.py <<'PY'
+          from pathlib import Path
+          import re
+          p=Path.home()/'.android/avd/noglass10.avd/config.ini'
+          s=p.read_text()
+          values={'hw.lcd.width':'${{ matrix.config.width }}','hw.lcd.height':'${{ matrix.config.height }}','hw.lcd.density':'320','skin.name':'${{ matrix.config.width }}x${{ matrix.config.height }}','showDeviceFrame':'no','hw.ramSize':'3072'}
+          for key,value in values.items():
+              s=re.sub(r'^'+re.escape(key)+r'=.*\n?','',s,flags=re.M)
+              s+='\n'+key+'='+value+'\n'
+          p.write_text(s)
+          PY
+          cat > run_qa.py <<'PY'
+          import subprocess as s,pathlib,time,sys,json
+          out=pathlib.Path('evidence');failures=[]
+          def run(args,name,limit=90):
+              with (out/name).open('wb') as f:
+                  try:
+                      r=s.run(args,stdout=f,stderr=s.STDOUT,timeout=limit)
+                      return r.returncode
+                  except s.TimeoutExpired:
+                      f.write(b'\nCOMMAND TIMEOUT\n');return 124
+          run(['adb','shell','wm','size'],'display-size.txt')
+          run(['adb','shell','wm','density'],'display-density.txt')
+          run(['adb','shell','getprop','ro.build.fingerprint'],'android-image.txt')
+          run(['adb','shell','settings','put','system','screen_off_timeout','1800000'],'screen-timeout.txt')
+          run(['adb','install','delivery/debug.apk'],'install.txt')
+          run(['adb','install','delivery/test.apk'],'install-test.txt')
+          time.sleep(10)
+          run(['adb','shell','am','start','-W','-n','app.saeon.trace.demo/app.saeon.trace.MainActivity'],'launch.txt',40)
+          time.sleep(5)
+          run(['adb','exec-out','screencap','-p'],'initial_home.png',25)
+          base=['adb','shell','am','instrument','-w','-r','-e','theme','${{ matrix.config.theme }}','-e','pass','hvf10','-e','class']
+          try:
+              for method in ['aAllDestinations','bHomeNavigationAndPrivacy','cPolicyScenariosAndContext','eRotationAndMeasuredTasks','fServicesAndSlowLookup','gMotion']:
+                  name=method+'.txt'
+                  code=run(base+['app.saeon.trace.NoGlass10Test#'+method,'app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner'],name,200)
+                  if code or 'OK (' not in (out/name).read_text(errors='replace'):failures.append(method)
+                  run(['adb','pull','/sdcard/Android/data/app.saeon.trace.demo/files/verification/hvf10',str(out/'screens')],'pull-'+method+'.txt',60)
+                  if code==124:break
+              rec=s.Popen(['adb','shell','screenrecord','--bit-rate','6000000','--time-limit','75','/sdcard/noglass-motion.mp4'])
+              run(base+['app.saeon.trace.NoGlass10Test#gMotion','app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner'],'motion-test.txt',75)
+              run(['adb','shell','pkill','-INT','screenrecord'],'stop-video.txt',10)
+              try:rec.wait(timeout=15)
+              except s.TimeoutExpired:rec.terminate()
+              run(['adb','pull','/sdcard/noglass-motion.mp4',str(out/'native-motion.mp4')],'video-pull.txt',30)
+              run(['adb','uninstall','app.saeon.trace.demo'],'uninstall-debug.txt')
+              run(['adb','install','delivery/TRACE_NoGlass10.apk'],'release-install.txt')
+              rec=s.Popen(['adb','shell','screenrecord','--bit-rate','8000000','--time-limit','20','/sdcard/noglass-launch.mp4'])
+              time.sleep(1)
+              run(['adb','shell','am','start','-W','-n','app.saeon.trace.demo/app.saeon.trace.MainActivity'],'release-launch.txt',40)
+              time.sleep(5)
+              run(['adb','exec-out','screencap','-p'],'release-home.png',25)
+              run(['adb','shell','pkill','-INT','screenrecord'],'stop-launch-video.txt',10)
+              try:rec.wait(timeout=15)
+              except s.TimeoutExpired:rec.terminate()
+              run(['adb','pull','/sdcard/noglass-launch.mp4',str(out/'native-launch.mp4')],'launch-pull.txt',30)
+          finally:
+              run(['adb','logcat','-d','-s','AndroidRuntime:E'],'runtime.txt',15)
+              (out/'result.txt').write_text('PASS\n' if not failures else 'FAIL: '+','.join(failures))
+          sys.exit(bool(failures))
+          PY
       - name: Independent Android run
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -31,47 +96,12 @@ jobs:
           avd-name: noglass10
           profile: pixel_6
           emulator-build: 13025442
-          ram-size: 3072M
+          ram-size: 3072
           cores: 2
           disable-animations: false
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          pre-emulator-launch-script: |
-            python3 - <<'PY'
-            from pathlib import Path
-            p=Path.home()/'.android/avd/noglass10.avd/config.ini'
-            with p.open('a') as f:f.write('\nhw.lcd.width=${{ matrix.config.width }}\nhw.lcd.height=${{ matrix.config.height }}\nhw.lcd.density=320\nskin.name=${{ matrix.config.width }}x${{ matrix.config.height }}\nshowDeviceFrame=no\n')
-            PY
-          script: |
-            mkdir -p evidence
-            cp delivery/BUILD_COMMIT.txt delivery/SHA256.txt evidence/
-            python3 - <<'PY'
-            import subprocess as s,pathlib,time,sys
-            out=pathlib.Path('evidence'); failures=[]
-            def run(args,name,limit=90):
-              with (out/name).open('wb') as f:
-                try:r=s.run(args,stdout=f,stderr=s.STDOUT,timeout=limit);return r.returncode
-                except s.TimeoutExpired:f.write(b'\nCOMMAND TIMEOUT\n');return 124
-            run(['adb','shell','wm','size'],'display-size.txt')
-            run(['adb','shell','wm','density'],'display-density.txt')
-            run(['adb','shell','getprop','ro.build.fingerprint'],'android-image.txt')
-            run(['adb','install','delivery/debug.apk'],'install.txt')
-            run(['adb','install','delivery/test.apk'],'install-test.txt')
-            time.sleep(10)
-            run(['adb','shell','am','start','-W','-n','app.saeon.trace.demo/app.saeon.trace.MainActivity'],'launch.txt',40)
-            time.sleep(5)
-            run(['adb','exec-out','screencap','-p'],'initial_home.png',25)
-            base=['adb','shell','am','instrument','-w','-r','-e','theme','${{ matrix.config.theme }}','-e','pass','hvf10','-e','class']
-            try:
-              for method in ['aAllDestinations','bHomeNavigationAndPrivacy','cPolicyScenariosAndContext','eRotationAndMeasuredTasks','fServicesAndSlowLookup','gMotion']:
-                name=method+'.txt';code=run(base+['app.saeon.trace.NoGlass10Test#'+method,'app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner'],name,180)
-                if code or 'OK (' not in (out/name).read_text(errors='replace'):failures.append(method)
-                run(['adb','pull','/sdcard/Android/data/app.saeon.trace.demo/files/verification/hvf10',str(out/'screens')],'pull-'+method+'.txt',55)
-                if code==124:break
-            finally:
-              run(['adb','logcat','-d','-s','AndroidRuntime:E'],'runtime.txt',15)
-              (out/'result.txt').write_text('PASS\n' if not failures else 'FAIL: '+','.join(failures))
-            sys.exit(bool(failures))
-            PY
+          pre-emulator-launch-script: python3 resize.py
+          script: python3 run_qa.py
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: 'noglass10-hvf-${{ matrix.config.name }}', path: evidence/}

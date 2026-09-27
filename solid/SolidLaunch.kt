@@ -18,7 +18,37 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.*
+import kotlin.math.*\nimport kotlinx.coroutines.delay
+
+@Composable fun DeferredSkeleton(pending:Boolean,modifier:Modifier=Modifier,rows:Int=3,content:@Composable ()->Unit){
+    var visible by remember{mutableStateOf(false)}
+    LaunchedEffect(pending){
+        if(pending){delay(160);visible=true}else visible=false
+    }
+    if(!pending)content() else if(visible)SkeletonRows(modifier,rows)
+}
+
+@Composable fun SkeletonRows(modifier:Modifier=Modifier,rows:Int=3){
+    val reduced=LocalReducedMotion.current
+    val loop=rememberInfiniteTransition(label="loading_placeholder")
+    val opacity by loop.animateFloat(.38f,.68f,infiniteRepeatable(tween(900,easing=LinearEasing),RepeatMode.Reverse),label="placeholder_alpha")
+    val color=TraceColors.Divider.copy(alpha=if(reduced).78f else opacity)
+    Column(
+        modifier.fillMaxWidth().testTag("loading_skeleton").clearAndSetSemantics{contentDescription="불러오는 중";liveRegion=LiveRegionMode.Polite},
+        verticalArrangement=Arrangement.spacedBy(16.dp)
+    ){
+        repeat(rows){i->
+            Row(Modifier.fillMaxWidth().height(48.dp),verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(12.dp)){
+                Box(Modifier.size(32.dp).background(color,androidx.compose.foundation.shape.RoundedCornerShape(10.dp)))
+                Column(Modifier.weight(1f),verticalArrangement=Arrangement.spacedBy(8.dp)){
+                    Box(Modifier.fillMaxWidth(if(i%2==0).56f else .70f).height(10.dp).background(color,androidx.compose.foundation.shape.RoundedCornerShape(6.dp)))
+                    Box(Modifier.fillMaxWidth(.34f).height(8.dp).background(color,androidx.compose.foundation.shape.RoundedCornerShape(5.dp)))
+                }
+                Box(Modifier.width(56.dp).height(11.dp).background(color,androidx.compose.foundation.shape.RoundedCornerShape(6.dp)))
+            }
+        }
+    }
+}
 
 @Composable fun TraceLaunchMark(progress:Float,modifier:Modifier=Modifier){
     val main=remember{PathParser().parsePathString("M6 9h28v7H23.5v17h-7V16H6z").toPath()}

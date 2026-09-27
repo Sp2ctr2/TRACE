@@ -1,0 +1,105 @@
+name: TRACE 11 same-host capture
+on:
+  push:
+    branches: [design/trace-polish11-20260928]
+    paths: [.github/workflows/trace11-same-host-capture.yml]
+  workflow_dispatch:
+permissions: {contents: read, actions: read}
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {name: phone-light, width: 780, height: 1688, theme: light}
+          - {name: phone-dark, width: 780, height: 1688, theme: dark}
+          - {name: compact, width: 640, height: 1136, theme: light}
+          - {name: tablet-portrait, width: 1600, height: 2560, theme: light}
+          - {name: tablet-landscape, width: 2560, height: 1600, theme: light}
+    steps:
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1', cache-read-only: true}
+      - uses: actions/download-artifact@v4
+        with:
+          name: trace11-build
+          path: delivery
+          run-id: 36357828205
+          github-token: ${{ github.token }}
+      - name: Build exact source with its matching test application
+        run: |
+          unzip -q delivery/TRACE_11_Android_Source.zip -d source
+          cat > source/app/src/androidTest/kotlin/app/saeon/trace/OneFrame11Test.kt <<'KOT'
+          package app.saeon.trace
+          import androidx.test.ext.junit.runners.AndroidJUnit4
+          import org.junit.Test
+          import org.junit.runner.RunWith
+          @RunWith(AndroidJUnit4::class)
+          class OneFrame11Test:UiHarness(){
+            @Test fun home(){fresh();Thread.sleep(1400);compose.waitForIdle();capture("native_home",audit=false)}
+          }
+          KOT
+          cd source
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../fresh-debug.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ../fresh-test.apk
+      - name: Boot device
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('source/tools/boot-emulator.sh')
+          p.write_text(p.read_text().replace('hw.ramSize=4096','hw.ramSize=2048\nhw.lcd.width=${{ matrix.config.width }}\nhw.lcd.height=${{ matrix.config.height }}\nhw.lcd.density=320\nskin.name=${{ matrix.config.width }}x${{ matrix.config.height }}\nshowDeviceFrame=no'))
+          PY
+          bash source/tools/boot-emulator.sh
+          mkdir -p evidence
+          adb shell am force-stop com.google.android.apps.nexuslauncher
+          adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher > evidence/isolation.txt
+          adb shell settings put system screen_off_timeout 1800000
+          adb install fresh-debug.apk
+          adb install fresh-test.apk
+          cp delivery/BUILD_COMMIT.txt evidence/
+          sha256sum fresh-debug.apk fresh-test.apk > evidence/TESTED_HASHES.txt
+          sleep 7
+      - name: One native frame
+        run: |
+          timeout 70 adb shell am instrument -w -r -e class app.saeon.trace.OneFrame11Test -e pass trace11 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > evidence/ONE_FRAME.txt 2>&1
+          timeout 20 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/trace11/native_home.png evidence/native_home.png
+          grep -q 'OK (' evidence/ONE_FRAME.txt
+      - name: All destinations and state checks
+        run: |
+          failed=0
+          for test in bankScreens detailScreens policies navigationAndResize servicesAndDemo; do
+            timeout 150 adb shell am instrument -w -r -e class app.saeon.trace.Acceptance11Test#$test -e theme ${{ matrix.config.theme }} -e pass trace11 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > evidence/$test.txt 2>&1 || failed=1
+            grep -q 'OK (' evidence/$test.txt || failed=1
+            timeout 40 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/trace11 evidence/screens >/dev/null 2>&1 || true
+          done
+          exit $failed
+      - name: Record motion
+        if: always()
+        run: |
+          adb shell screenrecord --bit-rate 6500000 --time-limit 50 /sdcard/trace11-motion.mp4 &
+          recorder=$!
+          timeout 60 adb shell am instrument -w -r -e class app.saeon.trace.Acceptance11Test#motion -e theme ${{ matrix.config.theme }} -e pass trace11 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > evidence/MOTION.txt 2>&1 || true
+          timeout 5 adb shell pkill -INT screenrecord || true
+          wait $recorder || true
+          timeout 20 adb pull /sdcard/trace11-motion.mp4 evidence/ || true
+      - name: Preserve evidence
+        if: always()
+        run: |
+          timeout 40 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/trace11 evidence/screens >/dev/null 2>&1 || true
+          timeout 10 adb logcat -d -s AndroidRuntime:E > evidence/RUNTIME.txt || true
+          cp -r source/verification/logs evidence/emulator-logs || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trace11-samehost-${{ matrix.config.name }}
+          path: evidence/

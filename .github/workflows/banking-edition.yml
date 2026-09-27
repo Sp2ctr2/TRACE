@@ -35,7 +35,8 @@ jobs:
           test -n "$snapshot"
           unzip -q "$snapshot" -d android
           python3 edition/apply.py
-          if [ -f edition/corrections.py ]; then python3 edition/corrections.py; fi
+          python3 edition/corrections.py
+          python3 edition/last_checks.py
           chmod +x android/gradlew android/tools/*.sh
           cp -r edition delivery/overlay
           git rev-parse HEAD > delivery/BUILD_COMMIT.txt
@@ -53,7 +54,7 @@ jobs:
           cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ../delivery/test.apk
           cp trace-ui/build/outputs/aar/trace-ui-release.aar ../delivery/trace-ui-banking.aar
           cp -r core/build/test-results ../delivery/core-tests
-          cp -r app/build/test-results ../delivery/app-tests
+          if [ -d app/build/test-results ]; then cp -r app/build/test-results ../delivery/app-tests; fi
           sha256sum ../delivery/*.apk ../delivery/*.aar > ../delivery/BINARY_SHA256.txt
       - uses: actions/upload-artifact@v4
         if: always()
@@ -92,7 +93,7 @@ jobs:
           adb shell wm size | tee evidence/display.txt
           adb shell wm density | tee -a evidence/display.txt
           grep -q 'Physical size: ${{ matrix.screen.width }}x${{ matrix.screen.height }}' evidence/display.txt
-      - name: Install and run banking acceptance tests
+      - name: Record actual quick-demo journeys
         run: |
           adb install -r delivery/debug.apk
           adb install -r delivery/test.apk
@@ -103,10 +104,17 @@ jobs:
           adb shell am force-stop com.google.android.apps.nexuslauncher
           adb shell screenrecord --bit-rate 6000000 --time-limit 180 /sdcard/banking.mp4 &
           recorder=$!
-          adb shell am instrument -w -r -e class app.saeon.trace.BankingEditionTest,app.saeon.trace.RepositoryDeviceTest -e pass banking app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/INSTRUMENTATION.txt
+          adb shell am instrument -w -r -e class app.saeon.trace.BankingEditionTest#bankHomeAndQuickDemoActuallyWork -e pass motion app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/MOTION_INSTRUMENTATION.txt
           adb shell pkill -INT screenrecord || true
           wait $recorder || true
           adb pull /sdcard/banking.mp4 evidence/ || true
+          adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/motion evidence/motion-screens || true
+          grep -q 'OK (' evidence/MOTION_INSTRUMENTATION.txt
+          ! grep -q 'FAILURES\|INSTRUMENTATION_FAILED\|Process crashed' evidence/MOTION_INSTRUMENTATION.txt
+      - name: Run full banking acceptance and capture inventory
+        if: always()
+        run: |
+          adb shell am instrument -w -r -e class app.saeon.trace.BankingEditionTest,app.saeon.trace.RepositoryDeviceTest -e pass banking app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/INSTRUMENTATION.txt
           adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/banking evidence/screens || true
           adb logcat -d -s AndroidRuntime:E ActivityManager:E > evidence/RUNTIME_ERRORS.txt
           adb shell dumpsys gfxinfo app.saeon.trace.demo > evidence/GFXINFO.txt

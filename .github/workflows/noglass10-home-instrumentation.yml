@@ -21,7 +21,7 @@ jobs:
           path: delivery
           run-id: 36333268963
           github-token: ${{ github.token }}
-      - name: Add one-shot capture test
+      - name: Build matching debug app and one-shot test
         run: |
           unzip -q delivery/TRACE_NoGlass10_Android_Source.zip -d source
           cat > source/app/src/androidTest/kotlin/app/saeon/trace/HomeOnlyTest.kt <<'KOT'
@@ -44,7 +44,8 @@ jobs:
           KOT
           cd source
           chmod +x gradlew
-          ./gradlew :app:assembleDebugAndroidTest --no-daemon
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+          cp app/build/outputs/apk/debug/app-debug.apk ../home-debug.apk
           cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ../home-test.apk
       - name: Boot device
         run: |
@@ -61,7 +62,7 @@ jobs:
           adb shell am force-stop com.google.android.apps.nexuslauncher
           adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher > evidence/isolation.txt
           adb shell settings put system screen_off_timeout 1800000
-          adb install delivery/debug.apk
+          adb install home-debug.apk
           adb install home-test.apk
           sleep 7
       - name: Capture exactly one native home frame
@@ -70,7 +71,7 @@ jobs:
           grep -q 'OK (' evidence/test.txt
           adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/homeshot/actual_home.png evidence/actual_home.png
           test -s evidence/actual_home.png
-          sha256sum delivery/TRACE_NoGlass10.apk > evidence/apk-sha256.txt
+          sha256sum home-debug.apk > evidence/debug-apk-sha256.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with: {name: noglass10-actual-home, path: evidence/}

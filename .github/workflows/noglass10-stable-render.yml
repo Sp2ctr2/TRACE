@@ -1,0 +1,91 @@
+name: No Glass 10 stable renderer
+on:
+  push:
+    branches: [design/trace-noglass10-20260928]
+    paths: [.github/workflows/noglass10-stable-render.yml]
+  workflow_dispatch:
+permissions: {contents: read, actions: read}
+jobs:
+  screen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {name: phone, width: 780, height: 1688, theme: light}
+          - {name: dark, width: 780, height: 1688, theme: dark}
+          - {name: compact, width: 640, height: 1136, theme: light}
+          - {name: tablet, width: 1600, height: 2560, theme: light}
+    steps:
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
+      - uses: actions/download-artifact@v4
+        with: {name: noglass10-build, path: delivery, run-id: 36333268963, github-token: '${{ github.token }}'}
+      - name: Pinned official emulator and initial rendering
+        run: |
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          mkdir -p evidence
+          cp delivery/BUILD_COMMIT.txt delivery/SHA256.txt evidence/
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          curl --fail --retry 3 -L https://dl.google.com/android/repository/emulator-linux_x64-13025442.zip -o emulator.zip
+          echo '7b8c1d3173d825cda94933e4b8c0e562cd9f470c46e09ddcc87ee0f9b894c13b  emulator.zip' | sha256sum -c -
+          rm -rf "$ANDROID_HOME/emulator"
+          unzip -q emulator.zip -d "$ANDROID_HOME"
+          unzip -q delivery/TRACE_NoGlass10_Android_Source.zip -d source
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('source/tools/boot-emulator.sh')
+          s=p.read_text().replace('system-images;android-35;google_apis;x86_64','system-images;android-34;default;x86_64').replace('system-images/android-35/google_apis/x86_64','system-images/android-34/default/x86_64')
+          s=s.replace('hw.ramSize=4096','hw.ramSize=3072\nhw.lcd.width=${{ matrix.config.width }}\nhw.lcd.height=${{ matrix.config.height }}\nhw.lcd.density=320\nskin.name=${{ matrix.config.width }}x${{ matrix.config.height }}\nshowDeviceFrame=no').replace('-gpu swiftshader_indirect','-gpu swiftshader_indirect -feature -Vulkan -cores 2')
+          p.write_text(s)
+          PY
+          bash source/tools/boot-emulator.sh
+          adb shell settings put system screen_off_timeout 1800000
+          adb shell settings put global window_animation_scale 1
+          adb shell settings put global transition_animation_scale 1
+          adb shell settings put global animator_duration_scale 1
+          adb shell getprop ro.build.fingerprint > evidence/ANDROID_IMAGE.txt
+          adb shell wm size > evidence/display.txt
+          adb shell wm density >> evidence/display.txt
+          adb install delivery/debug.apk
+          adb install delivery/test.apk
+          sleep 10
+          timeout 30 adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity > evidence/INITIAL_LAUNCH.txt
+          sleep 6
+          timeout 20 adb exec-out screencap -p > evidence/initial_home.png || true
+          timeout 10 adb logcat -d -s AndroidRuntime:E > evidence/INITIAL_RUNTIME.txt || true
+          cp -r source/verification/logs evidence/emulator-logs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: 'noglass10-initial-${{ matrix.config.name }}', path: evidence/}
+      - name: All screens without orientation test first
+        run: |
+          timeout 240 adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test#aAllDestinations -e theme ${{ matrix.config.theme }} -e pass stable10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > evidence/SCREENS_TEST.txt 2>&1
+          grep -q 'OK (' evidence/SCREENS_TEST.txt
+      - name: Preserve screen checkpoint
+        if: always()
+        run: |
+          timeout 60 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/stable10 evidence/screens || true
+          timeout 10 adb logcat -d -s AndroidRuntime:E > evidence/RUNTIME.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: 'noglass10-screens-${{ matrix.config.name }}', path: evidence/}
+      - name: Remaining flows and rotation
+        if: success()
+        run: |
+          timeout 300 adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test#bHomeNavigationAndPrivacy,app.saeon.trace.NoGlass10Test#cPolicyScenariosAndContext,app.saeon.trace.NoGlass10Test#eRotationAndMeasuredTasks,app.saeon.trace.NoGlass10Test#fServicesAndSlowLookup,app.saeon.trace.NoGlass10Test#gMotion -e theme ${{ matrix.config.theme }} -e pass stable10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > evidence/FLOWS_TEST.txt 2>&1
+          grep -q 'OK (' evidence/FLOWS_TEST.txt
+      - name: Final capture collection
+        if: always()
+        run: |
+          timeout 60 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/stable10 evidence/screens || true
+          timeout 10 adb logcat -d -s AndroidRuntime:E > evidence/FINAL_RUNTIME.txt || true
+          cp -r source/verification/logs evidence/emulator-logs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: 'noglass10-stable-${{ matrix.config.name }}', path: evidence/}

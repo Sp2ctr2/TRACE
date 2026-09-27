@@ -54,3 +54,5 @@ edit(p,'tap("card_loss");capture','tap("card_loss",scroll=true);capture')
 edit(p,'tap("account_lock");tap','tap("account_lock",scroll=true);tap')
 edit(p,'tap("demo_hide",scroll=true);assertFalse','tap("demo_hide",scroll=true);compose.waitUntil(10000){!compose.activity.model.stage.value.unlocked};assertFalse')
 print('Applied final root hit-test boundary, compact spacing, durable services, purpose-specific documents and validation fixes.')
+import runpy
+runpy.run_path('studio/finish.py',run_name='__main__')

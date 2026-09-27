@@ -1,0 +1,86 @@
+name: No Glass 10 Android 29 compatibility
+on:
+  push:
+    branches: [design/trace-noglass10-20260928]
+    paths: [.github/workflows/noglass10-api29-compat.yml]
+  workflow_dispatch:
+permissions: {contents: read, actions: read}
+jobs:
+  compatibility:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        device:
+          - {name: phone, width: 780, height: 1688}
+          - {name: tablet, width: 1600, height: 2560}
+    steps:
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: actions/download-artifact@v4
+        with: {name: noglass10-build, path: delivery, run-id: 36333268963, github-token: '${{ github.token }}'}
+      - name: Prepare bounded commands
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          mkdir -p evidence
+          cp delivery/BUILD_COMMIT.txt delivery/SHA256.txt evidence/
+          cat > resize.py <<'PY'
+          from pathlib import Path
+          import re
+          p=Path.home()/'.android/avd/noglass29.avd/config.ini'
+          s=p.read_text()
+          for k,v in {'hw.lcd.width':'${{ matrix.device.width }}','hw.lcd.height':'${{ matrix.device.height }}','hw.lcd.density':'320','skin.name':'${{ matrix.device.width }}x${{ matrix.device.height }}','showDeviceFrame':'no','hw.ramSize':'3072'}.items():
+              s=re.sub(r'^'+re.escape(k)+r'=.*\n?','',s,flags=re.M)+'\n'+k+'='+v+'\n'
+          p.write_text(s)
+          PY
+          cat > verify.py <<'PY'
+          from pathlib import Path
+          import subprocess as s,time,sys
+          out=Path('evidence');fail=[]
+          def run(args,name,timeout=60):
+              with (out/name).open('wb') as f:
+                  try:return s.run(args,stdout=f,stderr=s.STDOUT,timeout=timeout).returncode
+                  except s.TimeoutExpired:f.write(b'COMMAND TIMEOUT');return 124
+          time.sleep(40)
+          run(['adb','shell','wm','size'],'size.txt')
+          run(['adb','shell','wm','density'],'density.txt')
+          run(['adb','shell','getprop','ro.build.fingerprint'],'android-image.txt')
+          run(['adb','shell','settings','put','system','screen_off_timeout','1800000'],'timeout.txt')
+          for kind in ['debug','test']:
+              installed=False
+              for attempt in range(3):
+                  name=f'install-{kind}-{attempt}.txt'
+                  code=run(['adb','install','--no-streaming','-r',f'delivery/{kind}.apk'],name,80)
+                  if code==0 and 'Success' in (out/name).read_text(errors='replace'):installed=True;break
+                  time.sleep(25)
+              if not installed:(out/'result.txt').write_text('Installation failed: '+kind);sys.exit(1)
+          run(['adb','shell','pm','list','instrumentation'],'installed-instrumentation.txt')
+          for method in ['aAllDestinations','bHomeNavigationAndPrivacy','cPolicyScenariosAndContext','eRotationAndMeasuredTasks','fServicesAndSlowLookup','gMotion']:
+              name=method+'.txt'
+              code=run(['adb','shell','am','instrument','-w','-r','-e','theme','light','-e','pass','compat29','-e','class','app.saeon.trace.NoGlass10Test#'+method,'app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner'],name,130)
+              if code or 'OK (' not in (out/name).read_text(errors='replace'):fail.append(method)
+              run(['adb','pull','/sdcard/Android/data/app.saeon.trace.demo/files/verification/compat29',str(out/'screens')],'pull-'+method+'.txt',40)
+              if code==124:break
+          run(['adb','logcat','-d','-s','AndroidRuntime:E'],'runtime.txt',15)
+          (out/'result.txt').write_text('PASS' if not fail else 'FAIL: '+','.join(fail))
+          sys.exit(bool(fail))
+          PY
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: default
+          arch: x86_64
+          profile: pixel_3a
+          avd-name: noglass29
+          ram-size: 3072
+          cores: 2
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -feature -Vulkan -no-snapshot -noaudio -no-boot-anim
+          pre-emulator-launch-script: python3 resize.py
+          script: python3 verify.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: 'noglass10-api29-${{ matrix.device.name }}', path: evidence/}

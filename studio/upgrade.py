@@ -1,0 +1,48 @@
+from pathlib import Path
+import shutil
+root=Path('android-native')
+u=root/'app/src/main/kotlin/app/saeon/trace/ui'
+d=root/'trace-ui/src/main/kotlin/app/saeon/trace/ui/design'
+for name,destination in {
+ 'StudioScreens.kt':u/'screens/StudioScreens.kt',
+ 'StudioServicesScreens.kt':u/'screens/StudioServicesScreens.kt',
+ 'StudioDemoCenter.kt':u/'StudioDemoCenter.kt',
+ 'StudioServices.kt':root/'app/src/main/kotlin/app/saeon/trace/data/StudioServices.kt',
+ 'StudioLaunch.kt':d/'StudioLaunch.kt',
+ 'StudioTest.kt':root/'app/src/androidTest/kotlin/app/saeon/trace/StudioTest.kt',
+ 'StudioLockTest.kt':root/'core/src/test/kotlin/app/saeon/trace/core/StudioLockTest.kt'
+}.items():
+ destination.parent.mkdir(parents=True,exist_ok=True)
+ shutil.copy2(Path('studio')/name,destination)
+def patch(path,old,new):
+ p=root/path;s=p.read_text()
+ if old not in s:raise RuntimeError(f'Missing source anchor: {path}: {old[:60]}')
+ p.write_text(s.replace(old,new))
+patch('core/src/main/kotlin/app/saeon/trace/core/Models.kt','val recurringEnabled: Boolean = true','val recurringEnabled: Boolean = true,\n    val accountLocked: Boolean = false')
+patch('core/src/main/kotlin/app/saeon/trace/core/BankEngine.kt','        requireBank(amount > 0,','        requireBank(!state.accountLocked, "ACCOUNT_LOCKED", "계좌 보호가 켜져 있어요. 송금은 실행하지 않았습니다.")\n        requireBank(amount > 0,')
+patch('core/src/main/kotlin/app/saeon/trace/core/BankEngine.kt','    fun authorize(state: BankState, challenge: AuthorizationChallenge, method: AuthMethod, now: Long): BankState {','    fun authorize(state: BankState, challenge: AuthorizationChallenge, method: AuthMethod, now: Long): BankState {\n        requireBank(!state.accountLocked, "ACCOUNT_LOCKED", "계좌 보호가 켜져 있어요. 송금은 실행하지 않았습니다.")')
+patch('app/src/main/kotlin/app/saeon/trace/data/SnapshotCodec.kt','"recurringEnabled" to state.recurringEnabled','"recurringEnabled" to state.recurringEnabled, "accountLocked" to state.accountLocked')
+patch('app/src/main/kotlin/app/saeon/trace/data/SnapshotCodec.kt','value.getBoolean("recurringEnabled")','value.getBoolean("recurringEnabled"), value.optBoolean("accountLocked", false)')
+patch('app/src/main/kotlin/app/saeon/trace/ui/BankViewModel.kt','    val repository = graph.repository','    val repository = graph.repository\n    val services = StudioServices(application)')
+p=u/'SaeonApp.kt';s=p.read_text().replace('DisposableEffect(stage.clock.started){view.keepScreenOn=stage.clock.started!=null;onDispose{view.keepScreenOn=false}}','DisposableEffect(stage.unlocked){view.keepScreenOn=stage.unlocked;onDispose{view.keepScreenOn=false}}')
+s=s.replace('FinalHome(state, preferences, model, open)','StudioHome(state, preferences, model, open)').replace('AssetsScreen(state, open)','StudioAssets(state, open)').replace('MoreScreen(preferences, open)','StudioMore(preferences, open)').replace('DemoCenterScreen(model,open)','StudioDemoCenter(model,open)')
+s=s.replace('SupportScreen(open, back)','StudioServiceScreen("support",state,model,open,back)').replace('RecurringScreen(state, model, back)','StudioServiceScreen("recurring",state,model,open,back)')
+extras=['investments','investment_detail','bond_detail','insurance','insurance_detail','credit','certificates','document','card_service','replacement','account_protection','schedule_new','inquiry','cases','terms']
+s=s.replace('                        motionScreen("app_info")',''.join(f'                        motionScreen("{name}") {{ StudioServiceScreen("{name}",state,model,open,back) }}\n' for name in extras)+'                        motionScreen("app_info")')
+s=s.replace('                    backdrop.record { this@drawWithContent.drawContent() }\n                    drawLayer(backdrop)','                    if(route in roots && !preferences.reducedTransparency) {\n                        backdrop.record { this@drawWithContent.drawContent() }; drawLayer(backdrop)\n                    } else drawContent()')
+p.write_text(s)
+p=u/'screens/TransferScreens.kt';p.write_text(p.read_text().replace('FinalReview(state, record, interaction, model, open, back)','StudioReview(state, record, interaction, model, open, back)').replace('ViewportVerify(record, interaction, model, back, home)','StudioVerify(record, interaction, model, back, home)'))
+p=u/'screens/MotionWarn.kt';p.write_text(p.read_text().replace('ViewportReview(state,record,interaction,model,open,back)','StudioReview(state,record,interaction,model,open,back)'))
+p=root/'app/src/main/kotlin/app/saeon/trace/MainActivity.kt';s=p.read_text().replace('            SaeonTheme(preferences.easyMode, dark, noMotion) {','            val bankState by model.bank.collectAsStateWithLifecycle()\n            val storageError by model.fatal.collectAsStateWithLifecycle()\n            SaeonTheme(preferences.easyMode, dark, noMotion) {\n              StudioLaunch(bankState != null || storageError != null) {');s=s.replace('onStopVoice = ::stopVoice, voiceActive = voiceActive)\n            }','onStopVoice = ::stopVoice, voiceActive = voiceActive)\n              }\n            }');p.write_text(s)
+p=d/'Theme.kt';s=p.read_text().replace('letterSpacing = (-0.25).sp,','letterSpacing = (if(size>=24)-0.55 else if(size>=15)-0.2 else 0.0).sp,\n    fontFeatureSettings = "tnum",');s=s.replace('titleLarge = style(24, FontWeight.Bold, 34)','titleLarge = style(22, FontWeight.SemiBold, 30)').replace('FontWeight.SemiBold, 29)','FontWeight.SemiBold, 27)').replace('FontWeight.Bold, if (easy) 43 else 40)','FontWeight.SemiBold, if (easy) 43 else 39)').replace('headlineSmall = style(24, FontWeight.Bold, 34)','headlineSmall = style(24, FontWeight.SemiBold, 34)');p.write_text(s)
+p=d/'BankExperience.kt';s=p.read_text().replace('if(dark) Color(0xFF29332C) else Color(0xFFF8F9F5)','if(dark) Color(0xFF202321) else Color(0xFFFBFAF7)').replace('BlurEffect(22.dp.toPx(),22.dp.toPx()','BlurEffect(16.dp.toPx(),16.dp.toPx()').replace('        Canvas(Modifier.matchParentSize().graphicsLayer {','        if(!solid) Canvas(Modifier.matchParentSize().graphicsLayer {');s=s.replace('val pale=TraceColors.CoralLight;val ink=TraceColors.CoralText','val pale=if(kind=="complete")TraceColors.Surface else TraceColors.CoralLight;val ink=if(kind=="complete")TraceColors.Ink else TraceColors.CoralText');p.write_text(s)
+p=d/'Components.kt';s=p.read_text().replace('padding(horizontal = 24.dp)','padding(horizontal = 20.dp)').replace('heightIn(min = 68.dp)','heightIn(min = 62.dp)').replace('padding(vertical = 14.dp)','padding(vertical = 11.dp)').replace('Column(bodyModifier.fillMaxWidth().padding(horizontal = 20.dp)','Column(bodyModifier.fillMaxWidth().testTag("${tag}_body").padding(horizontal = 20.dp)');p.write_text(s)
+p=d/'OrbitLoader.kt';s=p.read_text().replace('initialValue = .96f','initialValue = .985f').replace('targetValue = 1.04f','targetValue = 1.015f').replace('repeat(7)','repeat(if(reduced) 0 else 5)');p.write_text(s)
+p=u/'screens/BankingScreens.kt';s=p.read_text().replace('import androidx.compose.runtime.*','import androidx.compose.runtime.*\nimport androidx.lifecycle.compose.collectAsStateWithLifecycle');s=s.replace('    Page(title="새온 체크카드",','    val service by model.services.state.collectAsStateWithLifecycle()\n    Page(title="새온 체크카드",');s=s.replace('if(preferences.cardFrozen)"일시 정지 중"','if(service.cardLost)"분실 신고 · 사용 정지"else if(preferences.cardFrozen)"일시 정지 중"').replace('0824','4201').replace('Color(0xFF202723)','TraceColors.Ink').replace('Color(0xFFBFCABD)','TraceColors.Paper.copy(alpha=.7f)').replace('Text("새온 데일리",color=Color.White','Text("새온 데일리",color=TraceColors.Paper').replace('Text("••••  ••••  ••••  4201",color=Color.White','Text("••••  ••••  ••••  4201",color=TraceColors.Paper');s=s.replace('OptionRow("카드 일시 정지",preferences.cardFrozen,"이 기기에 저장된 시연 카드의 상태를 변경해요."){model.preference{cardFrozen(it)}}','if(service.cardLost) MenuRow("분실 신고 관리", "분실 신고를 해제하기 전에는 정지를 풀 수 없어요.",BankIcons.Lock){open("card_service")}\n        else OptionRow("카드 일시 정지",preferences.cardFrozen,"이 기기에 저장된 시연 카드의 상태를 변경해요."){model.preference{cardFrozen(it)}}\n        MenuRow("카드 분실·재발급",icon=BankIcons.Card){open("card_service")}');p.write_text(s)
+res=root/'app/src/main/res';(res/'mipmap-anydpi-v26').mkdir(exist_ok=True)
+(res/'drawable/trace_launcher_foreground.xml').write_text('''<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><group android:scaleX="1.65" android:scaleY="1.65" android:translateX="21" android:translateY="18"><path android:fillColor="#EF4A32" android:pathData="M6,9h28v7H23.5v17h-7V16H6z"/><path android:fillColor="#EF4A32" android:pathData="M6,23h7v10H6z"/></group></vector>''')
+(res/'mipmap-anydpi-v26/ic_trace.xml').write_text('''<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android"><background android:drawable="@color/trace_launcher_paper"/><foreground android:drawable="@drawable/trace_launcher_foreground"/><monochrome android:drawable="@drawable/trace_launcher_foreground"/></adaptive-icon>''')
+(res/'values/trace_launcher.xml').write_text('<resources><color name="trace_launcher_paper">#F5F4F0</color></resources>')
+p=root/'app/src/main/AndroidManifest.xml';s=p.read_text().replace('android:icon="@drawable/ic_launcher"','android:icon="@mipmap/ic_trace"').replace('android:roundIcon="@drawable/ic_launcher"','android:roundIcon="@mipmap/ic_trace"');p.write_text(s)
+p=root/'app/build.gradle.kts';s=p.read_text().replace('versionCode = 60','versionCode = 70').replace('6.0.0-final-demo','7.0.0-studio');p.write_text(s)
+print('Studio UI and service layers applied; bank policy and transaction persistence remain separate.')

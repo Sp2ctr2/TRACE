@@ -211,7 +211,7 @@ enum class ActionTone { CORAL, INK, NEUTRAL }
 ){
     val dark=TraceColors.Paper.luminance()<.25f
     Column(
-        modifier.width(78.dp).fillMaxHeight()
+        modifier.width(78.dp).fillMaxHeight().testTag("root_navigation_rail")
             .background(if(dark)Color(0xFF1D1D21) else Color(0xFFF8F9F6))
             .border(BorderStroke(.7.dp,if(dark)Color.White.copy(alpha=.06f) else TraceColors.Divider.copy(alpha=.72f)),RoundedCornerShape(0.dp))
             .padding(top=16.dp,bottom=18.dp),

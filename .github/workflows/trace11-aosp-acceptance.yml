@@ -1,0 +1,109 @@
+name: TRACE 11 AOSP acceptance
+on:
+  push:
+    branches: [design/trace-polish11-20260928]
+    paths: [.github/workflows/trace11-aosp-acceptance.yml]
+  workflow_dispatch:
+permissions: {contents: read, actions: read}
+jobs:
+  device:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {name: phone-light, width: 780, height: 1688, theme: light}
+          - {name: phone-dark, width: 780, height: 1688, theme: dark}
+          - {name: compact, width: 640, height: 1136, theme: light}
+          - {name: tablet-portrait, width: 1600, height: 2560, theme: light}
+          - {name: tablet-landscape, width: 2560, height: 1600, theme: light}
+    steps:
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
+      - uses: actions/download-artifact@v4
+        with:
+          name: trace11-build
+          path: delivery
+          run-id: 36357828205
+          github-token: ${{ github.token }}
+      - name: Boot an independent AOSP device
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          unzip -q delivery/TRACE_11_Android_Source.zip -d source
+          mkdir -p evidence
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('source/tools/boot-emulator.sh')
+          s=p.read_text().replace('android-35','android-34').replace('google_apis','default').replace('swiftshader_indirect','software').replace('libasound2t64','libasound2')
+          s=s.replace('hw.ramSize=4096','hw.ramSize=2048\nhw.lcd.width=${{ matrix.config.width }}\nhw.lcd.height=${{ matrix.config.height }}\nhw.lcd.density=320\nskin.name=${{ matrix.config.width }}x${{ matrix.config.height }}\nshowDeviceFrame=no')
+          p.write_text(s)
+          PY
+          bash source/tools/boot-emulator.sh
+          adb shell settings put system screen_off_timeout 1800000
+          adb shell settings put global window_animation_scale 1
+          adb shell settings put global transition_animation_scale 1
+          adb shell settings put global animator_duration_scale 1
+          adb shell wm size > evidence/display.txt
+          adb shell wm density >> evidence/display.txt
+          adb install delivery/debug.apk
+          adb install delivery/test.apk
+          cp delivery/SHA256.txt evidence/
+          cp delivery/BUILD_COMMIT.txt evidence/
+          sleep 12
+      - name: Public UI startup probe
+        run: |
+          adb logcat -v threadtime '*:E' > evidence/LIVE_LOGCAT.txt 2>&1 &
+          timeout 70 adb shell am instrument -w -r -e class app.saeon.trace.ReleaseSmoke11Test app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > evidence/DEBUG_PUBLIC_PROBE.txt 2>&1
+          timeout 20 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/release11 evidence/probe || true
+          grep -q 'OK (' evidence/DEBUG_PUBLIC_PROBE.txt
+      - name: Capture and test real application screens
+        run: |
+          failed=0
+          for test in bankScreens detailScreens policies navigationAndResize servicesAndDemo; do
+            timeout 170 adb shell am instrument -w -r -e class app.saeon.trace.Acceptance11Test#$test -e theme ${{ matrix.config.theme }} -e pass trace11 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > evidence/$test.txt 2>&1 || failed=1
+            grep -q 'OK (' evidence/$test.txt || failed=1
+            if grep -q 'FAILURES\|INSTRUMENTATION_FAILED\|Process crashed' evidence/$test.txt; then failed=1; fi
+            timeout 40 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/trace11 evidence/screens >/dev/null 2>&1 || true
+          done
+          echo $failed > evidence/FAILURE_COUNT.txt
+          exit $failed
+      - name: Natural-speed interaction recording
+        if: always()
+        run: |
+          adb shell screenrecord --bit-rate 6000000 --time-limit 45 /sdcard/trace11-motion.mp4 &
+          recorder=$!
+          timeout 60 adb shell am instrument -w -r -e class app.saeon.trace.Acceptance11Test#motion -e theme ${{ matrix.config.theme }} -e pass trace11 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > evidence/MOTION.txt 2>&1 || true
+          timeout 5 adb shell pkill -INT screenrecord || true
+          wait $recorder || true
+          timeout 20 adb pull /sdcard/trace11-motion.mp4 evidence/ || true
+      - name: Optimized APK public UI acceptance
+        if: always()
+        run: |
+          adb uninstall app.saeon.trace.demo || true
+          adb install delivery/TRACE_11.apk
+          adb install -r delivery/test.apk
+          adb shell screenrecord --bit-rate 6500000 --time-limit 18 /sdcard/trace11-launch.mp4 &
+          recorder=$!
+          timeout 65 adb shell am instrument -w -r -e class app.saeon.trace.ReleaseSmoke11Test app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > evidence/RELEASE_SMOKE.txt 2>&1 || true
+          timeout 5 adb shell pkill -INT screenrecord || true
+          wait $recorder || true
+          timeout 20 adb pull /sdcard/trace11-launch.mp4 evidence/ || true
+          timeout 20 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/release11 evidence/release || true
+          grep -q 'OK (' evidence/RELEASE_SMOKE.txt
+      - name: Retain all evidence
+        if: always()
+        run: |
+          timeout 10 adb logcat -d -s AndroidRuntime:E > evidence/RUNTIME.txt || true
+          cp -r source/verification/logs evidence/emulator-logs || true
+          sudo dmesg | tail -160 > evidence/HOST_KERNEL.txt
+          free -m > evidence/HOST_MEMORY.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trace11-aosp-${{ matrix.config.name }}
+          path: evidence/

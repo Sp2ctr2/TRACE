@@ -1,6 +1,6 @@
 package app.saeon.trace
 
-import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.*
 import androidx.compose.ui.test.*
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import app.saeon.trace.core.*

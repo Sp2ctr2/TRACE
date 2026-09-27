@@ -38,13 +38,13 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p=Path('source/tools/boot-emulator.sh')
-          s=p.read_text().replace('hw.ramSize=4096','hw.ramSize=2048\nhw.lcd.width=${{ matrix.config.width }}\nhw.lcd.height=${{ matrix.config.height }}\nhw.lcd.density=320\nskin.name=${{ matrix.config.width }}x${{ matrix.config.height }}\nshowDeviceFrame=no').replace('vm.heapSize=512','vm.heapSize=256').replace('-gpu swiftshader_indirect','-gpu swiftshader -feature -Vulkan -cores 2 -memory 2048')
+          s=p.read_text().replace('hw.ramSize=4096','hw.ramSize=3072\nhw.lcd.width=${{ matrix.config.width }}\nhw.lcd.height=${{ matrix.config.height }}\nhw.lcd.density=320\nskin.name=${{ matrix.config.width }}x${{ matrix.config.height }}\nshowDeviceFrame=no').replace('-gpu swiftshader_indirect','-gpu swiftshader_indirect -feature -Vulkan -cores 2 -memory 3072')
           p.write_text(s)
           PY
           function preserve {
             set +e
-            timeout 45 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/gles10 evidence/screens
-            timeout 8 adb logcat -d -s AndroidRuntime:E > evidence/RUNTIME.txt
+            timeout 60 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/gles10 evidence/screens
+            timeout 10 adb logcat -d -s AndroidRuntime:E > evidence/RUNTIME.txt
             cp -r source/verification/logs evidence/emulator-logs
             sudo dmesg | tail -180 > evidence/HOST_KERNEL.txt
             free -m >> evidence/HOST_MEMORY.txt
@@ -61,10 +61,10 @@ jobs:
           adb shell settings put global animator_duration_scale 1
           adb install delivery/debug.apk
           adb install delivery/test.apk
-          sleep 15
-          timeout 30 adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity > evidence/START.txt
-          sleep 6
-          timeout 10 adb exec-out screencap -p > evidence/initial_home.png
+          sleep 20
+          timeout 30 adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity > evidence/START.txt || true
+          adb logcat -v threadtime AndroidRuntime:E ActivityManager:E '*:S' > evidence/LIVE_RUNTIME.txt 2>&1 &
+          sleep 10
           timeout 480 adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test#aAllDestinations,app.saeon.trace.NoGlass10Test#bHomeNavigationAndPrivacy,app.saeon.trace.NoGlass10Test#cPolicyScenariosAndContext,app.saeon.trace.NoGlass10Test#eRotationAndMeasuredTasks,app.saeon.trace.NoGlass10Test#fServicesAndSlowLookup,app.saeon.trace.NoGlass10Test#gMotion -e theme ${{ matrix.config.theme }} -e pass gles10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > evidence/TEST.txt 2>&1
           grep -q 'OK (' evidence/TEST.txt
           ! grep -q 'FAILURES\|INSTRUMENTATION_FAILED\|Process crashed' evidence/TEST.txt
@@ -88,7 +88,7 @@ jobs:
           sleep 1
           timeout 30 adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity > motion/LAUNCH.txt
           sleep 5
-          timeout 10 adb exec-out screencap -p > motion/release_home.png
+          timeout 25 adb exec-out screencap -p > motion/release_home.png || true
           timeout 5 adb shell pkill -INT screenrecord || true
           wait $recorder || true
           timeout 20 adb pull /sdcard/launch.mp4 motion/ || true

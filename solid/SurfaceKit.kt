@@ -152,7 +152,7 @@ enum class ActionTone { CORAL, INK, NEUTRAL }
         drawRect(TraceColors.Paper)
         drawRect(
             Brush.radialGradient(
-                listOf(TraceColors.Coral.copy(alpha=if(dark).045f else .13f),Color.Transparent),
+                listOf(coral.copy(alpha=if(dark).045f else .13f),Color.Transparent),
                 center=Offset(size.width*.98f,-24.dp.toPx()),
                 radius=(size.minDimension*.72f).coerceAtLeast(320.dp.toPx())
             )

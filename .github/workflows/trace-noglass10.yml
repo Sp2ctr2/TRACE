@@ -1,0 +1,151 @@
+name: TRACE No Glass 10
+on:
+  push:
+    branches: [design/trace-noglass10-20260928]
+    paths: [noglass10/**, .github/workflows/trace-noglass10.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: trace-noglass10
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1', cache-read-only: false}
+      - uses: actions/download-artifact@v4
+        with:
+          name: refined9-build
+          path: baseline
+          run-id: 36320861259
+          github-token: ${{ github.token }}
+      - name: Apply approved design
+        run: |
+          rm -rf android-native
+          mkdir -p android-native delivery
+          unzip -q baseline/TRACE_Refined9_Android_Source.zip -d android-native
+          python3 noglass10/apply.py
+          if test -f noglass10/fix.py; then python3 noglass10/fix.py; fi
+          git rev-parse HEAD > delivery/BUILD_COMMIT.txt
+          cp -r noglass10 delivery/overlay
+          cd android-native
+          chmod +x gradlew
+          zip -qr ../delivery/TRACE_NoGlass10_Android_Source.zip . -x '*/build/*' '.gradle/*' 'local.properties' '.android-user/*'
+      - name: Compile and tests
+        working-directory: android-native
+        run: |
+          set -o pipefail
+          ./gradlew :core:cleanTest :core:test :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :trace-ui:assembleRelease --stacktrace --no-daemon 2>&1 | tee ../delivery/BUILD.log
+          cp app/build/outputs/apk/release/app-release.apk ../delivery/TRACE_NoGlass10.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../delivery/debug.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ../delivery/test.apk
+          cp trace-ui/build/outputs/aar/trace-ui-release.aar ../delivery/trace-ui-noglass10.aar
+          cp -r core/build/test-results ../delivery/core-tests
+          cp -r app/build/test-results ../delivery/app-tests
+          sha256sum ../delivery/TRACE_NoGlass10.apk ../delivery/debug.apk ../delivery/test.apk > ../delivery/SHA256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: noglass10-build, path: delivery/}
+  device:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {name: phone-light, width: 780, height: 1688, theme: light}
+          - {name: phone-dark, width: 780, height: 1688, theme: dark}
+          - {name: phone-compact, width: 640, height: 1136, theme: light}
+          - {name: tablet-portrait, width: 1600, height: 2560, theme: light}
+          - {name: tablet-landscape, width: 2560, height: 1600, theme: light}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
+      - uses: actions/download-artifact@v4
+        with: {name: noglass10-build, path: delivery}
+      - name: Start Android and configure test device lock
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          unzip -q delivery/TRACE_NoGlass10_Android_Source.zip -d emulator-source
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('emulator-source/tools/boot-emulator.sh')
+          p.write_text(p.read_text().replace('hw.ramSize=4096','hw.ramSize=4096\nhw.lcd.width=${{ matrix.config.width }}\nhw.lcd.height=${{ matrix.config.height }}\nhw.lcd.density=320\nskin.name=${{ matrix.config.width }}x${{ matrix.config.height }}\nshowDeviceFrame=no'))
+          PY
+          bash emulator-source/tools/boot-emulator.sh
+          mkdir -p evidence
+          adb shell wm size > evidence/display.txt
+          adb shell wm density >> evidence/display.txt
+          adb shell am force-stop com.google.android.apps.nexuslauncher
+          adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher > evidence/EMULATOR_ISOLATION.txt
+          adb shell am broadcast -a com.android.systemui.demo -e command exit
+          adb shell settings put global sysui_demo_on 0
+          adb shell settings put global window_animation_scale 1
+          adb shell settings put global transition_animation_scale 1
+          adb shell settings put global animator_duration_scale 1
+          adb shell locksettings set-pin 2468 | tee evidence/DEVICE_LOCK_SETUP.txt
+          adb shell settings put system screen_off_timeout 1800000
+          adb install -r delivery/debug.apk
+          adb install -r delivery/test.apk
+          sleep 12
+          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity
+          sleep 5
+          cp delivery/SHA256.txt evidence/
+          cp delivery/BUILD_COMMIT.txt evidence/
+      - name: Verify complete UI, states, rotation and real device auth
+        run: |
+          adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test -e theme ${{ matrix.config.theme }} -e pass noglass10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/INSTRUMENTATION.txt
+          grep -q 'OK (' evidence/INSTRUMENTATION.txt
+          ! grep -q 'FAILURES\|INSTRUMENTATION_FAILED\|Process crashed' evidence/INSTRUMENTATION.txt
+      - name: Record interactions
+        if: always()
+        run: |
+          adb shell screenrecord --bit-rate 6500000 --time-limit 90 /sdcard/noglass-motion.mp4 &
+          recorder=$!
+          adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test#gMotion -e theme ${{ matrix.config.theme }} -e pass noglass10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/MOTION.txt
+          adb shell pkill -INT screenrecord || true
+          wait $recorder || true
+          adb pull /sdcard/noglass-motion.mp4 evidence/ || true
+      - name: Preserve original captures and diagnostics
+        if: always()
+        run: |
+          adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/noglass10 evidence/screens || true
+          adb logcat -d -s AndroidRuntime:E ActivityManager:E > evidence/RUNTIME_ERRORS.txt
+          adb shell dumpsys gfxinfo app.saeon.trace.demo > evidence/GFXINFO.txt
+      - name: Release startup
+        if: always()
+        run: |
+          adb uninstall app.saeon.trace.demo || true
+          adb install delivery/TRACE_NoGlass10.apk
+          adb logcat -c
+          adb shell screenrecord --bit-rate 9000000 --time-limit 16 /sdcard/noglass-launch.mp4 &
+          recorder=$!
+          sleep 1
+          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity | tee evidence/RELEASE_LAUNCH.txt
+          sleep 6
+          adb exec-out screencap -p > evidence/release_home.png
+          adb shell pkill -INT screenrecord || true
+          wait $recorder || true
+          adb pull /sdcard/noglass-launch.mp4 evidence/ || true
+          adb logcat -d -s AndroidRuntime:E > evidence/RELEASE_ERRORS.txt
+          ! grep -q 'FATAL EXCEPTION' evidence/RELEASE_ERRORS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: noglass10-device-${{ matrix.config.name }}
+          path: evidence/

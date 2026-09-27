@@ -8,7 +8,10 @@ p=r/'core/src/main/kotlin/app/saeon/trace/core/BankEngine.kt';s=p.read_text()
 a='!it.seed && it.direction == Direction.DEBIT && dayInSeoul(it.completedAt)'
 b='!it.seed && it.direction == Direction.DEBIT && !it.nonce.startsWith("internal-") && dayInSeoul(it.completedAt)'
 assert a in s;s=s.replace(a,b);p.write_text(s)
-# Explicitly document absence of app-level JVM tests rather than failing packaging or implying execution.
+p=r/'app/src/main/kotlin/app/saeon/trace/data/ServicesStore.kt';s=p.read_text()
+a='DocumentLine(l.getString("name"),l.getLong("amount"))}}?:emptyList()'
+b='DocumentLine(l.getString("name"),l.getLong("amount"))}}}?:emptyList()'
+assert a in s;s=s.replace(a,b);p.write_text(s)
 out=Path('delivery/app-tests');out.mkdir(parents=True,exist_ok=True)
 (out/'NO_SOURCE.txt').write_text('No app-only JVM test cases in this build. Banking logic is tested by :core:test and Android service persistence by instrumentation.\n')
-print('All card freeze entry points and internal-transfer limit accounting reconciled.')
+print('Card protection, conservative limit accounting and immutable document snapshots reconciled.')

@@ -1,0 +1,77 @@
+name: No Glass 10 independent Android renderer
+on:
+  push:
+    branches: [design/trace-noglass10-20260928]
+    paths: [.github/workflows/noglass10-hvf-render.yml]
+  workflow_dispatch:
+permissions: {contents: read, actions: read}
+jobs:
+  native:
+    runs-on: macos-15-intel
+    timeout-minutes: 22
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {name: phone, width: 780, height: 1688, theme: light}
+          - {name: dark, width: 780, height: 1688, theme: dark}
+          - {name: compact, width: 640, height: 1136, theme: light}
+          - {name: tablet, width: 1600, height: 2560, theme: light}
+    steps:
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: actions/download-artifact@v4
+        with: {name: noglass10-build, path: delivery, run-id: 36333268963, github-token: '${{ github.token }}'}
+      - name: Independent Android run
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: default
+          arch: x86_64
+          avd-name: noglass10
+          profile: pixel_6
+          emulator-build: 13025442
+          ram-size: 3072M
+          cores: 2
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          pre-emulator-launch-script: |
+            python3 - <<'PY'
+            from pathlib import Path
+            p=Path.home()/'.android/avd/noglass10.avd/config.ini'
+            with p.open('a') as f:f.write('\nhw.lcd.width=${{ matrix.config.width }}\nhw.lcd.height=${{ matrix.config.height }}\nhw.lcd.density=320\nskin.name=${{ matrix.config.width }}x${{ matrix.config.height }}\nshowDeviceFrame=no\n')
+            PY
+          script: |
+            mkdir -p evidence
+            cp delivery/BUILD_COMMIT.txt delivery/SHA256.txt evidence/
+            python3 - <<'PY'
+            import subprocess as s,pathlib,time,sys
+            out=pathlib.Path('evidence'); failures=[]
+            def run(args,name,limit=90):
+              with (out/name).open('wb') as f:
+                try:r=s.run(args,stdout=f,stderr=s.STDOUT,timeout=limit);return r.returncode
+                except s.TimeoutExpired:f.write(b'\nCOMMAND TIMEOUT\n');return 124
+            run(['adb','shell','wm','size'],'display-size.txt')
+            run(['adb','shell','wm','density'],'display-density.txt')
+            run(['adb','shell','getprop','ro.build.fingerprint'],'android-image.txt')
+            run(['adb','install','delivery/debug.apk'],'install.txt')
+            run(['adb','install','delivery/test.apk'],'install-test.txt')
+            time.sleep(10)
+            run(['adb','shell','am','start','-W','-n','app.saeon.trace.demo/app.saeon.trace.MainActivity'],'launch.txt',40)
+            time.sleep(5)
+            run(['adb','exec-out','screencap','-p'],'initial_home.png',25)
+            base=['adb','shell','am','instrument','-w','-r','-e','theme','${{ matrix.config.theme }}','-e','pass','hvf10','-e','class']
+            try:
+              for method in ['aAllDestinations','bHomeNavigationAndPrivacy','cPolicyScenariosAndContext','eRotationAndMeasuredTasks','fServicesAndSlowLookup','gMotion']:
+                name=method+'.txt';code=run(base+['app.saeon.trace.NoGlass10Test#'+method,'app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner'],name,180)
+                if code or 'OK (' not in (out/name).read_text(errors='replace'):failures.append(method)
+                run(['adb','pull','/sdcard/Android/data/app.saeon.trace.demo/files/verification/hvf10',str(out/'screens')],'pull-'+method+'.txt',55)
+                if code==124:break
+            finally:
+              run(['adb','logcat','-d','-s','AndroidRuntime:E'],'runtime.txt',15)
+              (out/'result.txt').write_text('PASS\n' if not failures else 'FAIL: '+','.join(failures))
+            sys.exit(bool(failures))
+            PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: 'noglass10-hvf-${{ matrix.config.name }}', path: evidence/}

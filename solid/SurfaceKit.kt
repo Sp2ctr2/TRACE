@@ -147,9 +147,11 @@ enum class ActionTone { CORAL, INK, NEUTRAL }
 }
 
 @Composable fun SolidAmbient(modifier:Modifier=Modifier){
-    val dark=TraceColors.Paper.luminance()<.25f
+    val paper=TraceColors.Paper
+    val coral=TraceColors.Coral
+    val dark=paper.luminance()<.25f
     Canvas(modifier){
-        drawRect(TraceColors.Paper)
+        drawRect(paper)
         drawRect(
             Brush.radialGradient(
                 listOf(coral.copy(alpha=if(dark).045f else .13f),Color.Transparent),

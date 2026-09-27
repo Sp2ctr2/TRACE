@@ -18,7 +18,8 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlin.math.*\nimport kotlinx.coroutines.delay
+import kotlin.math.*
+import kotlinx.coroutines.delay
 
 @Composable fun DeferredSkeleton(pending:Boolean,modifier:Modifier=Modifier,rows:Int=3,content:@Composable ()->Unit){
     var visible by remember{mutableStateOf(false)}

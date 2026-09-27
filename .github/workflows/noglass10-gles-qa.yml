@@ -1,4 +1,4 @@
-name: No Glass 10 GLES verification
+name: No Glass 10 AOSP verification
 on:
   push:
     branches: [design/trace-noglass10-20260928]
@@ -25,8 +25,9 @@ jobs:
         with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
       - uses: actions/download-artifact@v4
         with: {name: noglass10-build, path: delivery, run-id: 36333268963, github-token: '${{ github.token }}'}
-      - name: Boot and execute UI suite
+      - name: Boot AOSP and execute UI suite
         run: |
+          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
           mkdir -p evidence
           cp delivery/BUILD_COMMIT.txt evidence/
           cp delivery/SHA256.txt evidence/
@@ -38,46 +39,44 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           p=Path('source/tools/boot-emulator.sh')
-          s=p.read_text().replace('hw.ramSize=4096','hw.ramSize=3072\nhw.lcd.width=${{ matrix.config.width }}\nhw.lcd.height=${{ matrix.config.height }}\nhw.lcd.density=320\nskin.name=${{ matrix.config.width }}x${{ matrix.config.height }}\nshowDeviceFrame=no').replace('-gpu swiftshader_indirect','-gpu swiftshader_indirect -feature -Vulkan -cores 2 -memory 3072')
+          s=p.read_text().replace('system-images;android-35;google_apis;x86_64','system-images;android-34;default;x86_64').replace('system-images/android-35/google_apis/x86_64','system-images/android-34/default/x86_64')
+          s=s.replace('hw.ramSize=4096','hw.ramSize=3072\nhw.lcd.width=${{ matrix.config.width }}\nhw.lcd.height=${{ matrix.config.height }}\nhw.lcd.density=320\nskin.name=${{ matrix.config.width }}x${{ matrix.config.height }}\nshowDeviceFrame=no').replace('-gpu swiftshader_indirect','-gpu swiftshader_indirect -feature -Vulkan -cores 4 -memory 3072')
           p.write_text(s)
           PY
           function preserve {
             set +e
-            timeout 60 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/gles10 evidence/screens
+            timeout 60 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/aosp10 evidence/screens
             timeout 10 adb logcat -d -s AndroidRuntime:E > evidence/RUNTIME.txt
             cp -r source/verification/logs evidence/emulator-logs
-            sudo dmesg | tail -180 > evidence/HOST_KERNEL.txt
+            sudo dmesg | tail -100 > evidence/HOST_KERNEL.txt
             free -m >> evidence/HOST_MEMORY.txt
           }
           trap preserve EXIT
           bash source/tools/boot-emulator.sh
+          adb shell getprop ro.build.fingerprint > evidence/ANDROID_IMAGE.txt
           adb shell wm size > evidence/display.txt
           adb shell wm density >> evidence/display.txt
-          adb shell am force-stop com.google.android.apps.nexuslauncher
-          adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher > evidence/EMULATOR.txt
           adb shell settings put system screen_off_timeout 1800000
           adb shell settings put global window_animation_scale 1
           adb shell settings put global transition_animation_scale 1
           adb shell settings put global animator_duration_scale 1
           adb install delivery/debug.apk
           adb install delivery/test.apk
-          sleep 20
-          timeout 30 adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity > evidence/START.txt || true
+          sleep 35
           adb logcat -v threadtime AndroidRuntime:E ActivityManager:E '*:S' > evidence/LIVE_RUNTIME.txt 2>&1 &
-          sleep 10
-          timeout 480 adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test#aAllDestinations,app.saeon.trace.NoGlass10Test#bHomeNavigationAndPrivacy,app.saeon.trace.NoGlass10Test#cPolicyScenariosAndContext,app.saeon.trace.NoGlass10Test#eRotationAndMeasuredTasks,app.saeon.trace.NoGlass10Test#fServicesAndSlowLookup,app.saeon.trace.NoGlass10Test#gMotion -e theme ${{ matrix.config.theme }} -e pass gles10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > evidence/TEST.txt 2>&1
+          timeout 480 adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test#aAllDestinations,app.saeon.trace.NoGlass10Test#bHomeNavigationAndPrivacy,app.saeon.trace.NoGlass10Test#cPolicyScenariosAndContext,app.saeon.trace.NoGlass10Test#eRotationAndMeasuredTasks,app.saeon.trace.NoGlass10Test#fServicesAndSlowLookup,app.saeon.trace.NoGlass10Test#gMotion -e theme ${{ matrix.config.theme }} -e pass aosp10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > evidence/TEST.txt 2>&1
           grep -q 'OK (' evidence/TEST.txt
           ! grep -q 'FAILURES\|INSTRUMENTATION_FAILED\|Process crashed' evidence/TEST.txt
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: 'noglass10-gles-${{ matrix.config.name }}', path: evidence/}
+        with: {name: 'noglass10-aosp-${{ matrix.config.name }}', path: evidence/}
       - name: Record verified-binary motion
         if: success()
         run: |
           mkdir -p motion
           adb shell screenrecord --bit-rate 6000000 --time-limit 60 /sdcard/motion.mp4 &
           recorder=$!
-          timeout 65 adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test#gMotion -e theme ${{ matrix.config.theme }} -e pass gles10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > motion/TEST.txt 2>&1 || true
+          timeout 65 adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test#gMotion -e theme ${{ matrix.config.theme }} -e pass aosp10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > motion/TEST.txt 2>&1 || true
           timeout 5 adb shell pkill -INT screenrecord || true
           wait $recorder || true
           timeout 20 adb pull /sdcard/motion.mp4 motion/ || true
@@ -95,4 +94,4 @@ jobs:
           timeout 10 adb logcat -d -s AndroidRuntime:E > motion/RUNTIME.txt || true
       - uses: actions/upload-artifact@v4
         if: always()
-        with: {name: 'noglass10-gles-motion-${{ matrix.config.name }}', path: motion/}
+        with: {name: 'noglass10-aosp-motion-${{ matrix.config.name }}', path: motion/}

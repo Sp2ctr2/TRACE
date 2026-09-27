@@ -1,0 +1,135 @@
+name: Banking Edition
+on:
+  push:
+    branches: [design/banking-edition-20260927]
+    paths: [edition/**, .github/workflows/banking-edition.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: banking-edition
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1', cache-read-only: false}
+      - uses: actions/download-artifact@v4
+        with:
+          name: stage-build
+          run-id: 36097427451
+          github-token: ${{ github.token }}
+          path: previous
+      - name: Prepare clean source and apply changes
+        run: |
+          mkdir -p android delivery
+          snapshot=$(find previous -name TRACE_Stage_source.zip -print -quit)
+          test -n "$snapshot"
+          unzip -q "$snapshot" -d android
+          python3 edition/apply.py
+          if [ -f edition/corrections.py ]; then python3 edition/corrections.py; fi
+          chmod +x android/gradlew android/tools/*.sh
+          cp -r edition delivery/overlay
+          git rev-parse HEAD > delivery/BUILD_COMMIT.txt
+          cp index.html delivery/TRACE-reference.html
+          sha256sum index.html > delivery/REFERENCE_SHA256.txt
+          cd android
+          zip -qr ../delivery/TRACE_Banking_Source.zip . -x '*/build/*' '.gradle/*' 'local.properties' '.android-user/*' 'verification/*' 'archive/*'
+      - name: Compile and execute tests
+        working-directory: android
+        run: |
+          set -o pipefail
+          ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:assembleRelease :app:assembleDebugAndroidTest :trace-ui:assembleRelease --no-build-cache --stacktrace --no-daemon 2>&1 | tee ../delivery/BUILD.log
+          cp app/build/outputs/apk/release/app-release.apk ../delivery/TRACE_Banking_Edition.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../delivery/debug.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ../delivery/test.apk
+          cp trace-ui/build/outputs/aar/trace-ui-release.aar ../delivery/trace-ui-banking.aar
+          cp -r core/build/test-results ../delivery/core-tests
+          cp -r app/build/test-results ../delivery/app-tests
+          sha256sum ../delivery/*.apk ../delivery/*.aar > ../delivery/BINARY_SHA256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: banking-build, path: delivery/}
+  device:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        screen:
+          - {name: regular, width: 780, height: 1688}
+          - {name: compact, width: 640, height: 1136}
+    steps:
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
+      - uses: actions/download-artifact@v4
+        with: {name: banking-build, path: delivery}
+      - name: Set up real-size Android framebuffer
+        run: |
+          mkdir -p android evidence
+          unzip -q delivery/TRACE_Banking_Source.zip -d android
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('android/tools/boot-emulator.sh')
+          s=p.read_text().replace('hw.ramSize=4096','hw.ramSize=4096\nhw.lcd.width=${{ matrix.screen.width }}\nhw.lcd.height=${{ matrix.screen.height }}\nhw.lcd.density=320\nskin.name=${{ matrix.screen.width }}x${{ matrix.screen.height }}\nshowDeviceFrame=no')
+          p.write_text(s)
+          PY
+          bash android/tools/boot-emulator.sh
+          adb shell wm size | tee evidence/display.txt
+          adb shell wm density | tee -a evidence/display.txt
+          grep -q 'Physical size: ${{ matrix.screen.width }}x${{ matrix.screen.height }}' evidence/display.txt
+      - name: Install and run banking acceptance tests
+        run: |
+          adb install -r delivery/debug.apk
+          adb install -r delivery/test.apk
+          adb shell settings put global window_animation_scale 1
+          adb shell settings put global transition_animation_scale 1
+          adb shell settings put global animator_duration_scale 1
+          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity
+          adb shell am force-stop com.google.android.apps.nexuslauncher
+          adb shell screenrecord --bit-rate 6000000 --time-limit 180 /sdcard/banking.mp4 &
+          recorder=$!
+          adb shell am instrument -w -r -e class app.saeon.trace.BankingEditionTest,app.saeon.trace.RepositoryDeviceTest -e pass banking app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/INSTRUMENTATION.txt
+          adb shell pkill -INT screenrecord || true
+          wait $recorder || true
+          adb pull /sdcard/banking.mp4 evidence/ || true
+          adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/banking evidence/screens || true
+          adb logcat -d -s AndroidRuntime:E ActivityManager:E > evidence/RUNTIME_ERRORS.txt
+          adb shell dumpsys gfxinfo app.saeon.trace.demo > evidence/GFXINFO.txt
+          grep -q 'OK (' evidence/INSTRUMENTATION.txt
+          ! grep -q 'FAILURES\|INSTRUMENTATION_FAILED\|Process crashed' evidence/INSTRUMENTATION.txt
+      - name: Optimized APK cold launch
+        if: always()
+        run: |
+          adb uninstall app.saeon.trace.demo || true
+          adb install delivery/TRACE_Banking_Edition.apk
+          adb logcat -c
+          adb shell screenrecord --bit-rate 6000000 --time-limit 6 /sdcard/cold-start.mp4 &
+          record=$!
+          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity | tee evidence/RELEASE_LAUNCH.txt
+          adb shell am force-stop com.google.android.apps.nexuslauncher
+          sleep 3
+          adb exec-out screencap -p > evidence/release_home.png
+          wait $record || true
+          adb pull /sdcard/cold-start.mp4 evidence/ || true
+          adb logcat -d -s AndroidRuntime:E ActivityManager:E > evidence/RELEASE_ERRORS.txt
+          ! grep -q 'FATAL EXCEPTION' evidence/RELEASE_ERRORS.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: banking-device-${{ matrix.screen.name }}
+          path: evidence/

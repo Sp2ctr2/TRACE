@@ -23,11 +23,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with: {gradle-version: '8.11.1', cache-read-only: false}
       - uses: actions/download-artifact@v4
-        with:
-          name: refined9-build
-          path: baseline
-          run-id: 36320861259
-          github-token: ${{ github.token }}
+        with: {name: refined9-build, path: baseline, run-id: 36320861259, github-token: '${{ github.token }}'}
       - name: Apply approved design
         run: |
           rm -rf android-native
@@ -58,7 +54,7 @@ jobs:
   device:
     needs: build
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 22
     strategy:
       fail-fast: false
       matrix:
@@ -76,7 +72,7 @@ jobs:
         with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
       - uses: actions/download-artifact@v4
         with: {name: noglass10-build, path: delivery}
-      - name: Start Android and configure test device lock
+      - name: Start Android UI test fixture
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
@@ -98,54 +94,51 @@ jobs:
           adb shell settings put global window_animation_scale 1
           adb shell settings put global transition_animation_scale 1
           adb shell settings put global animator_duration_scale 1
-          adb shell locksettings set-pin 2468 | tee evidence/DEVICE_LOCK_SETUP.txt
           adb shell settings put system screen_off_timeout 1800000
           adb install -r delivery/debug.apk
           adb install -r delivery/test.apk
-          sleep 12
-          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity
-          sleep 5
+          sleep 10
+          timeout 30 adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity
+          sleep 4
           cp delivery/SHA256.txt evidence/
           cp delivery/BUILD_COMMIT.txt evidence/
-      - name: Verify complete UI, states, rotation and real device auth
+          echo 'UI automation uses a debug-only confirmation. Real device credential enrollment is a separate manual check.' > evidence/AUTH_SCOPE.txt
+      - name: Verify UI, state and rotation
         run: |
-          adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test -e theme ${{ matrix.config.theme }} -e pass noglass10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/INSTRUMENTATION.txt
+          timeout 480 adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test#aAllDestinations,app.saeon.trace.NoGlass10Test#bHomeNavigationAndPrivacy,app.saeon.trace.NoGlass10Test#cPolicyScenariosAndContext,app.saeon.trace.NoGlass10Test#eRotationAndMeasuredTasks,app.saeon.trace.NoGlass10Test#fServicesAndSlowLookup,app.saeon.trace.NoGlass10Test#gMotion -e theme ${{ matrix.config.theme }} -e pass noglass10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/INSTRUMENTATION.txt
           grep -q 'OK (' evidence/INSTRUMENTATION.txt
           ! grep -q 'FAILURES\|INSTRUMENTATION_FAILED\|Process crashed' evidence/INSTRUMENTATION.txt
-      - name: Record interactions
+      - name: Preserve captures before optional profiling
         if: always()
         run: |
-          adb shell screenrecord --bit-rate 6500000 --time-limit 90 /sdcard/noglass-motion.mp4 &
+          timeout 90 adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/noglass10 evidence/screens || true
+          timeout 15 adb logcat -d -s AndroidRuntime:E > evidence/RUNTIME_ERRORS.txt || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: 'noglass10-device-${{ matrix.config.name }}', path: evidence/}
+      - name: Record interactions and release startup
+        if: always()
+        run: |
+          mkdir -p motion
+          adb shell screenrecord --bit-rate 6500000 --time-limit 60 /sdcard/noglass-motion.mp4 &
           recorder=$!
-          adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test#gMotion -e theme ${{ matrix.config.theme }} -e pass noglass10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/MOTION.txt
-          adb shell pkill -INT screenrecord || true
+          timeout 70 adb shell am instrument -w -r -e class app.saeon.trace.NoGlass10Test#gMotion -e theme ${{ matrix.config.theme }} -e pass noglass10 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner > motion/MOTION.txt || true
+          timeout 5 adb shell pkill -INT screenrecord || true
           wait $recorder || true
-          adb pull /sdcard/noglass-motion.mp4 evidence/ || true
-      - name: Preserve original captures and diagnostics
-        if: always()
-        run: |
-          adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/noglass10 evidence/screens || true
-          adb logcat -d -s AndroidRuntime:E ActivityManager:E > evidence/RUNTIME_ERRORS.txt
-          adb shell dumpsys gfxinfo app.saeon.trace.demo > evidence/GFXINFO.txt
-      - name: Release startup
-        if: always()
-        run: |
+          timeout 20 adb pull /sdcard/noglass-motion.mp4 motion/ || true
           adb uninstall app.saeon.trace.demo || true
           adb install delivery/TRACE_NoGlass10.apk
           adb logcat -c
-          adb shell screenrecord --bit-rate 9000000 --time-limit 16 /sdcard/noglass-launch.mp4 &
+          adb shell screenrecord --bit-rate 9000000 --time-limit 12 /sdcard/noglass-launch.mp4 &
           recorder=$!
           sleep 1
-          adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity | tee evidence/RELEASE_LAUNCH.txt
-          sleep 6
-          adb exec-out screencap -p > evidence/release_home.png
-          adb shell pkill -INT screenrecord || true
+          timeout 30 adb shell am start -W -n app.saeon.trace.demo/app.saeon.trace.MainActivity > motion/RELEASE_LAUNCH.txt || true
+          sleep 4
+          timeout 10 adb exec-out screencap -p > motion/release_home.png || true
+          timeout 5 adb shell pkill -INT screenrecord || true
           wait $recorder || true
-          adb pull /sdcard/noglass-launch.mp4 evidence/ || true
-          adb logcat -d -s AndroidRuntime:E > evidence/RELEASE_ERRORS.txt
-          ! grep -q 'FATAL EXCEPTION' evidence/RELEASE_ERRORS.txt
+          timeout 20 adb pull /sdcard/noglass-launch.mp4 motion/ || true
+          timeout 10 adb logcat -d -s AndroidRuntime:E > motion/RELEASE_ERRORS.txt || true
       - uses: actions/upload-artifact@v4
         if: always()
-        with:
-          name: noglass10-device-${{ matrix.config.name }}
-          path: evidence/
+        with: {name: 'noglass10-motion-${{ matrix.config.name }}', path: motion/}

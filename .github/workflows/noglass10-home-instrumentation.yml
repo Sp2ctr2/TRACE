@@ -1,0 +1,76 @@
+name: No Glass 10 home-only instrumentation shot
+on:
+  push:
+    branches: [design/trace-noglass10-20260928]
+    paths: [.github/workflows/noglass10-home-instrumentation.yml]
+permissions: {contents: read, actions: read}
+jobs:
+  capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1', cache-read-only: true}
+      - uses: actions/download-artifact@v4
+        with:
+          name: noglass10-build
+          path: delivery
+          run-id: 36333268963
+          github-token: ${{ github.token }}
+      - name: Add one-shot capture test
+        run: |
+          unzip -q delivery/TRACE_NoGlass10_Android_Source.zip -d source
+          cat > source/app/src/androidTest/kotlin/app/saeon/trace/HomeOnlyTest.kt <<'KOT'
+          package app.saeon.trace
+
+          import androidx.test.ext.junit.runners.AndroidJUnit4
+          import org.junit.Test
+          import org.junit.runner.RunWith
+
+          @RunWith(AndroidJUnit4::class)
+          class HomeOnlyTest:UiHarness(){
+              @Test fun captureHome(){
+                  fresh()
+                  compose.activity.model.uiTestAuthentication=true
+                  Thread.sleep(1400)
+                  compose.waitForIdle()
+                  capture("actual_home",audit=false)
+              }
+          }
+          KOT
+          cd source
+          chmod +x gradlew
+          ./gradlew :app:assembleDebugAndroidTest --no-daemon
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ../home-test.apk
+      - name: Boot device
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('source/tools/boot-emulator.sh')
+          p.write_text(p.read_text().replace('hw.ramSize=4096','hw.ramSize=2048\nhw.lcd.width=780\nhw.lcd.height=1688\nhw.lcd.density=320\nskin.name=780x1688\nshowDeviceFrame=no'))
+          PY
+          bash source/tools/boot-emulator.sh
+          mkdir -p evidence
+          adb shell am force-stop com.google.android.apps.nexuslauncher
+          adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher > evidence/isolation.txt
+          adb shell settings put system screen_off_timeout 1800000
+          adb install delivery/debug.apk
+          adb install home-test.apk
+          sleep 7
+      - name: Capture exactly one native home frame
+        run: |
+          adb shell am instrument -w -r -e class app.saeon.trace.HomeOnlyTest -e pass homeshot app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/test.txt
+          grep -q 'OK (' evidence/test.txt
+          adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/homeshot/actual_home.png evidence/actual_home.png
+          test -s evidence/actual_home.png
+          sha256sum delivery/TRACE_NoGlass10.apk > evidence/apk-sha256.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: {name: noglass10-actual-home, path: evidence/}

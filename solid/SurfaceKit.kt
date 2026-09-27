@@ -100,7 +100,7 @@ enum class ActionTone { CORAL, INK, NEUTRAL }
         Canvas(Modifier.matchParentSize()){
             drawRoundRect(
                 Brush.verticalGradient(listOf(Color.White.copy(alpha=if(dark).12f else .30f),Color.Transparent)),
-                cornerRadius=CornerRadius(shape.topStart.toPx(size,size))
+                cornerRadius=CornerRadius(16.dp.toPx())
             )
             drawLine(
                 Brush.horizontalGradient(listOf(Color.Transparent,Color.White.copy(alpha=if(dark).20f else .45f),Color.Transparent)),

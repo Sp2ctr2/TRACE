@@ -24,7 +24,7 @@ def edit(path,old,new):
     p.write_text(s.replace(old,new))
 
 # Remove the experimental glass renderer entirely from the delivered source.
-for stale in [design/"GlassKit.kt"]:
+for stale in [design/"GlassKit.kt", screens/"GlassHome.kt"]:
     if stale.exists(): stale.unlink()
 
 p=design/"BankExperience.kt"

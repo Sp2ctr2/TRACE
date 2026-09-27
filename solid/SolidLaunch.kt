@@ -9,13 +9,13 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.*\nimport androidx.compose.ui.graphics.drawscope.*
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.dp\nimport androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlin.math.*
 
@@ -62,18 +62,18 @@ import kotlin.math.*
             val fade=if(t>.84f)(1f-(t-.84f)/.16f).coerceIn(0f,1f)else 1f
             val settle=TraceMotion.Enter.transform((t/.72f).coerceIn(0f,1f))
             Box(
-                Modifier.fillMaxSize().graphicsLayer{alpha=fade}.background(TraceColors.Paper)
+                Modifier.fillMaxSize().graphicsLayer{alpha=fade}.background(paper)
                     .testTag("launch_splash")
                     .pointerInput(Unit){awaitPointerEventScope{while(true){awaitPointerEvent().changes.forEach{it.consume()}}}}
                     .semantics{contentDescription="새온은행 시작";liveRegion=LiveRegionMode.Polite},
                 contentAlignment=Alignment.Center
             ){
                 Canvas(Modifier.matchParentSize()){
-                    drawRect(TraceColors.Paper)
-                    drawRect(Brush.radialGradient(listOf(TraceColors.Coral.copy(alpha=.13f),Color.Transparent),Offset(size.width*.95f,-20.dp.toPx()),radius=350.dp.toPx()))
+                    drawRect(paper)
+                    drawRect(Brush.radialGradient(listOf(coral.copy(alpha=.13f),Color.Transparent),Offset(size.width*.95f,-20.dp.toPx()),radius=350.dp.toPx()))
                     val wave=((t-.55f)/.28f).coerceIn(0f,1f)
                     if(wave>0f&&wave<1f){
-                        drawCircle(TraceColors.Coral.copy(alpha=.10f*(1f-wave)),radius=(54+80*wave).dp.toPx(),center=Offset(size.width/2,size.height/2-30.dp.toPx()),style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
+                        drawCircle(coral.copy(alpha=.10f*(1f-wave)),radius=(54+80*wave).dp.toPx(),center=Offset(size.width/2,size.height/2-30.dp.toPx()),style=androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
                     }
                 }
                 Column(horizontalAlignment=Alignment.CenterHorizontally){

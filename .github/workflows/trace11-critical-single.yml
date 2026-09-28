@@ -1,0 +1,84 @@
+name: TRACE 11 single critical screenshots
+on:
+  push:
+    branches: [design/trace-polish11-20260928]
+    paths: [polish11/CriticalSingle11Test.kt, .github/workflows/trace11-critical-single.yml]
+permissions: {contents: read, actions: read}
+concurrency: {group: trace11-critical-single, cancel-in-progress: true}
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
+      - uses: gradle/actions/setup-gradle@v4
+        with: {gradle-version: '8.11.1', cache-read-only: true}
+      - uses: actions/download-artifact@v4
+        with:
+          name: trace11-build
+          path: baseline
+          run-id: 36358721103
+          github-token: ${{ github.token }}
+      - name: Build matching test pair
+        run: |
+          unzip -q baseline/TRACE_11_Android_Source.zip -d source
+          cp polish11/CriticalSingle11Test.kt source/app/src/androidTest/kotlin/app/saeon/trace/
+          cd source
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --no-daemon
+          mkdir -p ../out
+          cp app/build/outputs/apk/debug/app-debug.apk ../out/debug.apk
+          cp app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk ../out/test.apk
+          cp ../baseline/TRACE_11.apk ../out/TRACE_11.apk
+          cp ../baseline/TRACE_11_Android_Source.zip ../out/TRACE_11_Android_Source.zip
+      - uses: actions/upload-artifact@v4
+        with: {name: trace11-single-build, path: out/}
+  shot:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        test: [review, gate, complete, demo]
+    steps:
+      - uses: actions/setup-java@v4
+        with: {distribution: temurin, java-version: '17'}
+      - uses: android-actions/setup-android@v3
+        with: {packages: platform-tools, log-accepted-android-sdk-licenses: false}
+      - uses: actions/download-artifact@v4
+        with: {name: trace11-single-build, path: delivery}
+      - name: Boot clean phone
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          unzip -q delivery/TRACE_11_Android_Source.zip -d source
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('source/tools/boot-emulator.sh')
+          p.write_text(p.read_text().replace('hw.ramSize=4096','hw.ramSize=2048\nhw.lcd.width=780\nhw.lcd.height=1688\nhw.lcd.density=320\nskin.name=780x1688\nshowDeviceFrame=no'))
+          PY
+          bash source/tools/boot-emulator.sh
+          mkdir -p evidence
+          adb shell am force-stop com.google.android.apps.nexuslauncher
+          adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher > evidence/isolation.txt
+          adb shell settings put system screen_off_timeout 1800000
+          adb install delivery/debug.apk
+          adb install delivery/test.apk
+          sleep 7
+      - name: Capture one native screen
+        run: |
+          adb shell am instrument -w -r -e class app.saeon.trace.CriticalSingle11Test#${{ matrix.test }} -e pass single11 app.saeon.trace.demo.test/androidx.test.runner.AndroidJUnitRunner | tee evidence/test.txt
+          grep -q 'OK (' evidence/test.txt
+          adb pull /sdcard/Android/data/app.saeon.trace.demo/files/verification/single11 evidence/screens
+          find evidence/screens -type f -name '*.png' -size +10k | grep -q .
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trace11-single-${{ matrix.test }}
+          path: evidence/

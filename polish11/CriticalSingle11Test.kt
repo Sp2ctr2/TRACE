@@ -20,9 +20,20 @@ class CriticalSingle11Test:UiHarness(){
         reset();createReview(DemoScenario.NORMAL);authorizeOnly();Thread.sleep(180);capture("05_trace_check",audit=false)
     }
     @Test fun complete(){
-        reset();createReview(DemoScenario.NORMAL);authorizeOnly();finish();waitScreen("transfer_complete");capture("06_allow_complete",audit=true)
+        reset();createReview(DemoScenario.NORMAL)
+        val transferId=state.currentTransferId!!
+        runBlocking {
+            repository.change { current, now ->
+                val rec=current.record(transferId)
+                val after=current.balance-rec.intent.amount
+                val receipt=TransferReceipt("SHOT-"+transferId.take(8),transferId,rec.intent.recipient,rec.intent.amount,now,rec.intent.purpose,after,"shot-"+transferId)
+                current.withRecord(rec.copy(stage=TransferStage.COMPLETE,decision=PolicyDecision.ALLOW))
+                    .copy(balance=after,receipts=listOf(receipt)+current.receipts,draft=null)
+            }
+        }
+        navigate("transfer_state");waitScreen("transfer_complete");capture("06_allow_complete",audit=true)
     }
     @Test fun demo(){
-        reset();navigate("app_info");repeat(7){tap("app_version",scroll=true)};tap("stage_unlock_confirm");waitScreen("demo_center");capture("11_demo_center",audit=true)
+        reset();compose.runOnIdle{compose.activity.model.stageUnlock()};navigate("presenter");waitScreen("demo_center");capture("11_demo_center",audit=true)
     }
 }

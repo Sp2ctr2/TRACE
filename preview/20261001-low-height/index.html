@@ -2483,8 +2483,8 @@ html[data-motion="reduced"] .context-path,html.low-resource .context-path{animat
 @media (max-height:520px){
   #experience .try-orbit{display:none!important}
   /* Reading mode already scrolls the document; do not add a nested wheel trap. */
-  html.reading-layout #experience>.wrap{overflow:visible!important}
-  html.reading-layout #experience .try-copy{height:auto;max-height:none;overflow:visible}
+  html.reading-layout #experience>.wrap{overflow:visible!important;overscroll-behavior-y:auto}
+  html.reading-layout #experience .try-copy,html.reading-layout #experience .phone-page-main{overscroll-behavior-y:auto}
   /* Let the amount and its action share one reader. Loading keeps its fixed Cancel. */
   html.mobile-deck:not(.mobile-landscape) body #experience .try-content[aria-busy="false"]{
     overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain;scrollbar-width:thin;scroll-padding-block:8px;

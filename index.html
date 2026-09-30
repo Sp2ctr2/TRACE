@@ -2477,6 +2477,34 @@ html[data-motion="reduced"] .context-path,html.low-resource .context-path{animat
 @media(prefers-reduced-motion:reduce){.context-path{animation:none!important}}
 @media(max-width:980px){.context-path{gap:5px;font-size:10px}}
 </style>
+<style id="trace-low-height-repair">
+/* Short screens retain readable controls, without decorative overflow. */
+@media (max-height:520px){
+  #experience .try-orbit{display:none!important}
+  /* Reading mode already scrolls the document; do not add a nested wheel trap. */
+  html.reading-layout #experience>.wrap{overflow:visible!important;overscroll-behavior-y:auto}
+  html.reading-layout #experience .try-copy,html.reading-layout #experience .phone-page-main{overscroll-behavior-y:auto}
+  /* Let the amount and its action share one reader. Loading keeps its fixed Cancel. */
+  html.mobile-deck:not(.mobile-landscape) body #experience .try-content[aria-busy="false"]{
+    overflow-y:auto!important;overflow-x:hidden!important;overscroll-behavior:contain;scrollbar-width:thin;scroll-padding-block:8px;
+  }
+  html.mobile-deck:not(.mobile-landscape) body #experience .try-content[aria-busy="false"] .phone-page-main{
+    flex:none!important;overflow:visible!important;
+  }
+  html.mobile-deck:not(.mobile-landscape) body #experience .try-content[aria-busy="false"]>.product-actions{margin-top:0!important}
+  /* The amount/error lead the small sheet reader; every other control remains scrollable. */
+  html.mobile-deck:not(.mobile-landscape) body #experience .product-sheet[data-kind="amount"] .sheet-grabber{display:none}
+  html.mobile-deck:not(.mobile-landscape) body #experience .product-sheet[data-kind="amount"] h2{font-size:20px;line-height:1.25;margin-top:4px}
+  html.mobile-deck:not(.mobile-landscape) body #experience .product-sheet[data-kind="amount"] .sheet-scroll-content{display:flex;flex-direction:column}
+  html.mobile-deck:not(.mobile-landscape) body #experience .product-sheet[data-kind="amount"] .sheet-scroll-content>*{flex-shrink:0}
+  html.mobile-deck:not(.mobile-landscape) body #experience .product-sheet[data-kind="amount"] .amount-field{order:0;margin-top:0;padding:0}
+  html.mobile-deck:not(.mobile-landscape) body #experience .product-sheet[data-kind="amount"] .amount-field input{font-size:28px;line-height:1.25}
+  html.mobile-deck:not(.mobile-landscape) body #experience .product-sheet[data-kind="amount"] .amount-error{order:1;margin-top:4px}
+  html.mobile-deck:not(.mobile-landscape) body #experience .product-sheet[data-kind="amount"] .sheet-description{order:2}
+  html.mobile-deck:not(.mobile-landscape) body #experience .product-sheet[data-kind="amount"] .amount-quick{order:3}
+  html.mobile-deck:not(.mobile-landscape) body #experience .product-sheet[data-kind="amount"] .amount-keypad{order:4}
+}
+</style>
 </head>
 <body>
 <svg aria-hidden="true" class="svg-defs" xmlns="http://www.w3.org/2000/svg">
@@ -3040,6 +3068,7 @@ html[data-motion="reduced"] .context-path,html.low-resource .context-path{animat
     const stateLabel=main.querySelector(':scope > .product-outcome-label');
     if(stateSymbol&&stateLabel){const banner=document.createElement('div');banner.className='mobile-state-banner';main.insertBefore(banner,stateSymbol);banner.append(stateSymbol,stateLabel);}
     main.scrollTop=0;
+    content.scrollTop=0; // Short-height flow reader also starts each new view at its top.
     content.dataset.view = view;
     content.classList.remove('is-changing');
     // Restart only the local view transition; the document and phone never move.

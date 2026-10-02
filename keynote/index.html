@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f5f4f0">
+<meta name="color-scheme" content="light">
+<meta name="description" content="TRACE 멘토링 키노트. 본인 인증, 그다음. 송금 전 요청 맥락을 판단하는 금융보안 프로젝트의 발표와 질문별 기술 답변.">
+<meta name="robots" content="noindex,nofollow">
+<title>TRACE — 본인 인증, 그다음.</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%23f5f4f0'/%3E%3Ctext x='15' y='47' font-family='Arial' font-size='46' font-weight='bold' fill='%2320211f'%3ET%3C/text%3E%3Cpath d='M46 43h6v6h-6z' fill='%23ef4a32'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="./core.css?v=20261002.1">
+<link rel="stylesheet" href="./ui.css?v=20261002.1">
+<link rel="stylesheet" href="./responsive.css?v=20261002.1">
+</head>
+<body>
+<div class="audience" id="audience">
+<header class="topbar">
+<a class="brand" href="#opening" aria-label="TRACE 키노트 처음으로"><span class="wordmark">TRACE<span class="accent">.</span></span><span class="brand-divider"></span><span class="edition">MENTORING<br>KEYNOTE / 2026.10</span></a>
+<nav class="top-actions" aria-label="발표 도구">
+<button class="text-btn search-trigger" data-open="qa" aria-label="질문 검색 열기"><span>질문 검색</span><span class="key">Q</span></button>
+<button class="icon-btn" data-open="map" title="전체 장면 · M" aria-label="전체 장면"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="3" y="3" width="5" height="5" rx="1"/><rect x="12" y="3" width="5" height="5" rx="1"/><rect x="3" y="12" width="5" height="5" rx="1"/><rect x="12" y="12" width="5" height="5" rx="1"/></svg></button>
+<button class="text-btn desktop-control" id="presenter-open" title="발표자 창 · P">발표자 창 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M2 7h16m-7 0v10"/></svg></button>
+<button class="icon-btn desktop-control" id="fullscreen" title="전체 화면 · F" aria-label="전체 화면"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M3 8V3h5m4 0h5v5m0 4v5h-5m-4 0H3v-5"/></svg></button>
+<button class="icon-btn" data-open="help" title="사용법 · ?" aria-label="사용법"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8"/><path d="M7.5 7a2.6 2.6 0 0 1 5 1c0 1.5-2.5 1.5-2.5 3m0 3h.01"/></svg></button>
+</nav>
+</header>
+<main id="stage-area" aria-label="TRACE 발표"><div class="stage" id="stage"></div></main>
+<footer class="bottom-bar"><nav class="chapter-rail" id="chapter-rail" aria-label="장면 바로가기"></nav><div class="bottom-main"><div class="chapter-info"><span class="page-counter" id="page-counter"></span><span class="current-title" id="current-title"></span><select class="mode-select" id="mode" aria-label="발표 경로"><option value="full">전체 18장</option><option value="brief">핵심 9장</option></select></div><button class="back-to-talk" id="back-to-talk">발표로 복귀 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M7 5 3 9l4 4M3 9h9a5 5 0 0 1 0 8"/></svg></button><div class="transport"><button class="time-btn" id="timer-toggle" title="타이머 시작 / 일시정지 · T" aria-label="타이머 시작 또는 일시정지"><span id="timer-symbol"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="m7 4 9 6-9 6z"/></svg></span><span id="clock">00:00</span></button><button class="icon-btn" id="previous" title="이전 장면" aria-label="이전 장면"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10H4M9 5l-5 5 5 5"/></svg></button><button class="icon-btn" id="next" title="다음 장면" aria-label="다음 장면"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg></button></div></div></footer>
+</div>
+<section class="presenter-root" id="presenter-root" aria-label="발표자 화면"><header class="presenter-head"><div class="brand"><span class="wordmark">TRACE<span class="accent">.</span></span><span class="edition">PRESENTER VIEW<br>발표자 전용 화면</span></div><button class="text-btn" data-open="qa">질문 검색 <span class="key">Q</span></button></header><div class="presenter-layout"><div class="presenter-main"><div class="presenter-kicker" id="p-position"></div><h1 id="p-title"></h1><p class="script" id="p-script"></p><div class="presenter-controls"><button class="text-btn" data-command="previous"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M16 10H4M9 5l-5 5 5 5"/></svg> 이전</button><button class="primary" data-command="next">다음 장면 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M4 10h12M11 5l5 5-5 5"/></svg></button><button class="text-btn" data-command="cover">화면 가리기</button></div><div class="presenter-rel" id="p-related"></div></div><aside class="presenter-side"><div class="presenter-kicker">ELAPSED</div><div class="presenter-clock" id="p-clock">00:00</div><div class="presenter-tools"><button class="text-btn" data-command="timer">시작 / 정지</button><button class="text-btn" data-command="resetTimer">초기화</button></div><div class="presenter-kicker" style="margin-top:32px">UP NEXT</div><div class="presenter-next" id="p-next"></div><div class="presenter-tools"><button class="text-btn" data-open="notes">멘토링 기록</button><button class="text-btn" data-open="map">전체 장면</button><button class="text-btn" data-open="sources">자료 기준</button></div><p class="presenter-status" id="p-status">발표 화면과 연결 중</p></aside></div></section>
+<div class="overlay" id="overlay" hidden><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" id="dialog"></section></div>
+<div class="screen-cover" id="screen-cover" role="button" tabindex="0" aria-label="화면 가리기 해제"><span class="wordmark">TRACE<span class="accent">.</span></span><small>B 또는 Esc · 발표 화면으로</small></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div><div class="sr-only" id="announce" role="status" aria-live="polite"></div>
+<noscript><p style="padding:40px">이 키노트는 JavaScript가 필요합니다. 브라우저에서 JavaScript를 허용한 뒤 다시 열어 주세요.</p></noscript>
+<script src="./scenes.js?v=20261002.1"></script>
+<script src="./answers.js?v=20261002.1"></script>
+<script src="./app.js?v=20261002.1"></script>
+</body></html>
